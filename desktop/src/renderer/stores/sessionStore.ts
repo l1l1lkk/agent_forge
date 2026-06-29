@@ -5,20 +5,22 @@ import { useMessageStore } from './messageStore'
 
 type SessionStore = {
   selectedSessionId: string | null
+  selectTick: number
   selectSession: (sessionId: string) => Promise<void>
 }
 
 export const useSessionStore = create<SessionStore>((set, get) => ({
   selectedSessionId: null,
+  selectTick: 0,
 
   selectSession: async (sessionId) => {
-    const prev = get().selectedSessionId
-    set({ selectedSessionId: sessionId })
-
     // Disconnect previous WS
-    if (prev) disconnectWS()
+    disconnectWS()
 
-    // Load messages from REST (always set, even if empty, to clear old session)
+    // Always increment tick to force UI refresh even for same session
+    set({ selectedSessionId: sessionId, selectTick: get().selectTick + 1 })
+
+    // Load messages from REST
     try {
       const messages = await fetchMessages(sessionId)
       useMessageStore.getState().setMessages(sessionId, messages)

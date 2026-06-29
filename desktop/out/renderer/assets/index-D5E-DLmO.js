@@ -7407,10 +7407,10 @@ const useMessageStore = create((set, get) => ({
 }));
 const useSessionStore = create((set, get) => ({
   selectedSessionId: null,
+  selectTick: 0,
   selectSession: async (sessionId) => {
-    const prev = get().selectedSessionId;
-    set({ selectedSessionId: sessionId });
-    if (prev) disconnectWS();
+    disconnectWS();
+    set({ selectedSessionId: sessionId, selectTick: get().selectTick + 1 });
     try {
       const messages = await fetchMessages(sessionId);
       useMessageStore.getState().setMessages(sessionId, messages);

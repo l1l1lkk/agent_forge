@@ -34,12 +34,11 @@ class RunManager:
 
         mgr = SessionManager(self.db)
 
-        # Verify session exists
+        # Verify session exists, reset stuck status if needed
         session = await mgr.get_session(session_id)
         if session.status == "running":
-            raise ConflictError(f"Session {session_id} is already running")
-
-        # Fire run in background (run_turn manages its own status)
+            # Reset stuck session
+            await mgr.update_status(session_id, "idle")
         async def _run():
             try:
                 result = await mgr.run_turn(session_id=session_id, user_prompt=prompt)
