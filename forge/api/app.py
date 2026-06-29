@@ -25,7 +25,7 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
         title="forge-agent",
-        version="0.1.0",
+        version="0.0.1rc1",
         description="AI Coding CLI Workbench API",
         lifespan=lifespan,
     )
@@ -45,7 +45,7 @@ def create_app() -> FastAPI:
     # Health check
     @app.get("/api/health")
     async def health():
-        return {"status": "ok", "version": "0.1.0"}
+        return {"status": "ok", "version": "0.0.1rc1"}
 
     # Register routers
     app.include_router(projects.router, prefix="/api")
