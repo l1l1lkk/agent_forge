@@ -37,6 +37,24 @@ export async function sendMessage(sessionId: string, content: string): Promise<v
   await api().post(`/api/sessions/${sessionId}/messages`, { role: 'user', content, run: true })
 }
 
+export async function fetchProjects(): Promise<any[]> {
+  const data = await api().get('/api/projects')
+  return data.projects || []
+}
+
+export async function createSession(projectId: string, agentId: string, title: string): Promise<any> {
+  return api().post('/api/sessions', { project: projectId, agent: agentId, title })
+}
+
+export async function fetchRunners(): Promise<any[]> {
+  const data = await api().get('/api/runners')
+  return (data.runners || []).map((r: any) => ({
+    id: `runner-${r.name}`, type: r.name.includes('claude') ? 'claude' : r.name.includes('codex') ? 'codex' : 'local',
+    label: r.name, authType: r.name === 'claude' || r.name === 'codex' ? 'oauth' : 'none',
+    status: r.available ? 'ready' : 'missing',
+  }))
+}
+
 function _avatar(name: string): string {
   const map: Record<string, string> = { coding: '💻', claude: '🧠', review: '🔬', default: '🤖' }
   return map[name] || map['default']

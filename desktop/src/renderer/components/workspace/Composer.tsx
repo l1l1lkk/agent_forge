@@ -7,7 +7,8 @@ export function Composer() {
   const [value, setValue] = useState('')
   const selectedSessionId = useSessionStore((s) => s.selectedSessionId)
   const appendUserMessage = useMessageStore((s) => s.appendUserMessage)
-  const isRunning = false
+  const runningBySession = useMessageStore((s) => s.runningBySession)
+  const isRunning = selectedSessionId ? (runningBySession[selectedSessionId] ?? false) : false
 
   function send() {
     const content = value.trim()

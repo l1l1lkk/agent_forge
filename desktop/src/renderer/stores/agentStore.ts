@@ -60,5 +60,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     const cur = get().expandedAgentIds
     set({ expandedAgentIds: cur.includes(agentId) ? cur.filter(id => id !== agentId) : [...cur, agentId] })
   },
+  expandAgent: (agentId) => {
+    const cur = get().expandedAgentIds
+    if (!cur.includes(agentId)) set({ expandedAgentIds: [...cur, agentId] })
+  },
   selectAgent: (selectedAgentId) => set({ selectedAgentId }),
 }))

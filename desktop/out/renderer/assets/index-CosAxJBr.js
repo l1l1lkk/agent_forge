@@ -293,7 +293,7 @@ reactJsxRuntime_production_min.jsxs = q;
   jsxRuntime.exports = reactJsxRuntime_production_min;
 }
 var jsxRuntimeExports = jsxRuntime.exports;
-var client = {};
+var client$1 = {};
 var reactDom = { exports: {} };
 var reactDom_production_min = {};
 var scheduler = { exports: {} };
@@ -6963,8 +6963,8 @@ function checkDCE() {
 var reactDomExports = reactDom.exports;
 var m = reactDomExports;
 {
-  client.createRoot = m.createRoot;
-  client.hydrateRoot = m.hydrateRoot;
+  client$1.createRoot = m.createRoot;
+  client$1.hydrateRoot = m.hydrateRoot;
 }
 const __vite_import_meta_env__$1 = {};
 const createStoreImpl = (createState) => {
@@ -7206,10 +7206,37 @@ async function fetchMessages(sessionId) {
 async function sendMessage(sessionId, content) {
   await api().post(`/api/sessions/${sessionId}/messages`, { role: "user", content, run: true });
 }
+async function fetchProjects() {
+  const data = await api().get("/api/projects");
+  return data.projects || [];
+}
+async function createSession(projectId, agentId, title) {
+  return api().post("/api/sessions", { project: projectId, agent: agentId, title });
+}
+async function fetchRunners() {
+  const data = await api().get("/api/runners");
+  return (data.runners || []).map((r2) => ({
+    id: `runner-${r2.name}`,
+    type: r2.name.includes("claude") ? "claude" : r2.name.includes("codex") ? "codex" : "local",
+    label: r2.name,
+    authType: r2.name === "claude" || r2.name === "codex" ? "oauth" : "none",
+    status: r2.available ? "ready" : "missing"
+  }));
+}
 function _avatar(name) {
   const map = { coding: "💻", claude: "🧠", review: "🔬", default: "🤖" };
   return map[name] || map["default"];
 }
+const client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  createSession,
+  fetchAgents,
+  fetchMessages,
+  fetchProjects,
+  fetchRunners,
+  fetchSessions,
+  sendMessage
+}, Symbol.toStringTag, { value: "Module" }));
 const useAgentStore = create((set, get) => ({
   agents: [],
   expandedAgentIds: [],
@@ -7251,6 +7278,10 @@ const useAgentStore = create((set, get) => ({
   toggleAgent: (agentId) => {
     const cur = get().expandedAgentIds;
     set({ expandedAgentIds: cur.includes(agentId) ? cur.filter((id2) => id2 !== agentId) : [...cur, agentId] });
+  },
+  expandAgent: (agentId) => {
+    const cur = get().expandedAgentIds;
+    if (!cur.includes(agentId)) set({ expandedAgentIds: [...cur, agentId] });
   },
   selectAgent: (selectedAgentId) => set({ selectedAgentId })
 }));
@@ -7362,47 +7393,57 @@ function disconnectWS() {
   currentSessionId = null;
   handler = null;
 }
-const mockConnectors = [
-  { id: "connector-github", type: "github", label: "GITHUB", account: "l1l1lkk", status: "connected" },
-  { id: "connector-gmail", type: "gmail", label: "GMAIL", account: "example@gmail...", status: "connected" }
-];
-const mockHarnesses = [
-  { id: "harness-codex", type: "codex", label: "codex-gpt", authType: "oauth", status: "ready" },
-  { id: "harness-claude", type: "claude", label: "claude", authType: "oauth", status: "ready" }
-];
-const mockMessages = [
-  { id: "m1", type: "user", content: "good. commit and push to main.", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
-  { id: "m2", type: "tool_invocation", toolName: "Bash", command: "git status && git diff", summary: "git status && git diff", status: "done", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
-  { id: "m3", type: "tool_result", toolName: "Bash", content: "On branch main\nYour branch is up to date with 'origin/main'.\nChanges not staged for commit...", exitCode: 0, createdAt: (/* @__PURE__ */ new Date()).toISOString() },
-  { id: "m4", type: "tool_invocation", toolName: "Bash", command: "git log --oneline -5", summary: "git log --oneline -5", status: "done", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
-  { id: "m5", type: "tool_result", toolName: "Bash", content: "13ae001 docs: correct backend test count\n0a07c59 docs: correct frontend test count", exitCode: 0, createdAt: (/* @__PURE__ */ new Date()).toISOString() },
-  { id: "m6", type: "assistant", agentName: "Octo", agentAvatar: "🐙", content: "Pushed `ab58a28`. Two fixes in one commit: delegation single-turn contract and KaTeX math rendering in chat messages.", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
-  { id: "m7", type: "status", label: "DONE", cost: "$0.2048", createdAt: (/* @__PURE__ */ new Date()).toISOString() }
-];
 const useMessageStore = create((set, get) => ({
-  messagesBySession: { "session-octopus": mockMessages },
+  messagesBySession: {},
+  runningBySession: {},
   getMessages: (sessionId) => {
     if (!sessionId) return [];
     return get().messagesBySession[sessionId] ?? [];
   },
   setMessages: (sessionId, messages) => {
-    set({ messagesBySession: { ...get().messagesBySession, [sessionId]: messages } });
+    set({
+      messagesBySession: { ...get().messagesBySession, [sessionId]: messages }
+    });
   },
   appendUserMessage: async (sessionId, content) => {
     const userMsg = { id: `user-${Date.now()}`, type: "user", content, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
     const existing = get().messagesBySession[sessionId] ?? [];
-    set({ messagesBySession: { ...get().messagesBySession, [sessionId]: [...existing, userMsg] } });
+    set({
+      messagesBySession: { ...get().messagesBySession, [sessionId]: [...existing, userMsg] },
+      runningBySession: { ...get().runningBySession, [sessionId]: true }
+    });
     try {
       await sendMessage(sessionId, content);
     } catch (e) {
-      console.error("Send failed:", e);
       const errMsg = { id: `err-${Date.now()}`, type: "error", title: "Send failed", detail: String(e), createdAt: (/* @__PURE__ */ new Date()).toISOString() };
-      set({ messagesBySession: { ...get().messagesBySession, [sessionId]: [...get().messagesBySession[sessionId] ?? [], errMsg] } });
+      const cur = get().messagesBySession[sessionId] ?? [];
+      set({
+        messagesBySession: { ...get().messagesBySession, [sessionId]: [...cur, errMsg] },
+        runningBySession: { ...get().runningBySession, [sessionId]: false }
+      });
     }
   },
   appendMessage: (sessionId, msg) => {
-    const existing = get().messagesBySession[sessionId] ?? [];
-    set({ messagesBySession: { ...get().messagesBySession, [sessionId]: [...existing, msg] } });
+    const cur = get().messagesBySession[sessionId] ?? [];
+    if (msg.type === "assistant" && msg.content && (msg.id.startsWith("delta-") || msg.id.startsWith("evt-"))) {
+      const last = cur[cur.length - 1];
+      if (last && last.type === "assistant" && last.id.startsWith("stream-")) {
+        last.content += msg.content;
+        set({ messagesBySession: { ...get().messagesBySession, [sessionId]: [...cur] } });
+        return;
+      }
+      msg.id = `stream-${sessionId}-${Date.now()}`;
+    }
+    if (msg.type === "status") {
+      const label = msg.label || "";
+      if (label === "DONE") {
+        set({ runningBySession: { ...get().runningBySession, [sessionId]: false } });
+      }
+    }
+    set({ messagesBySession: { ...get().messagesBySession, [sessionId]: [...cur, msg] } });
+  },
+  setRunning: (sessionId, running) => {
+    set({ runningBySession: { ...get().runningBySession, [sessionId]: running } });
   }
 }));
 const useSessionStore = create((set, get) => ({
@@ -7549,6 +7590,15 @@ const Clock = createLucideIcon("Clock", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
+const MessageCircle = createLucideIcon("MessageCircle", [
+  ["path", { d: "M7.9 20A9 9 0 1 0 4 16.1L2 22Z", key: "vv11sd" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
 const Paperclip = createLucideIcon("Paperclip", [
   [
     "path",
@@ -7583,6 +7633,15 @@ const Settings = createLucideIcon("Settings", [
     }
   ],
   ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const Square = createLucideIcon("Square", [
+  ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }]
 ]);
 /**
  * @license lucide-react v0.441.0 - ISC
@@ -7636,16 +7695,137 @@ function SidebarSection({ title, count, action, children }) {
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-1", children })
   ] });
 }
+const scriptRel = function detectScriptRel() {
+  const relList = typeof document !== "undefined" && document.createElement("link").relList;
+  return relList && relList.supports && relList.supports("modulepreload") ? "modulepreload" : "preload";
+}();
+const assetsURL = function(dep, importerUrl) {
+  return new URL(dep, importerUrl).href;
+};
+const seen = {};
+const __vitePreload = function preload(baseModule, deps, importerUrl) {
+  let promise = Promise.resolve();
+  if (deps && deps.length > 0) {
+    const links = document.getElementsByTagName("link");
+    const cspNonceMeta = document.querySelector(
+      "meta[property=csp-nonce]"
+    );
+    const cspNonce = cspNonceMeta?.nonce || cspNonceMeta?.getAttribute("nonce");
+    promise = Promise.allSettled(
+      deps.map((dep) => {
+        dep = assetsURL(dep, importerUrl);
+        if (dep in seen) return;
+        seen[dep] = true;
+        const isCss = dep.endsWith(".css");
+        const cssSelector = isCss ? '[rel="stylesheet"]' : "";
+        const isBaseRelative = !!importerUrl;
+        if (isBaseRelative) {
+          for (let i = links.length - 1; i >= 0; i--) {
+            const link2 = links[i];
+            if (link2.href === dep && (!isCss || link2.rel === "stylesheet")) {
+              return;
+            }
+          }
+        } else if (document.querySelector(`link[href="${dep}"]${cssSelector}`)) {
+          return;
+        }
+        const link = document.createElement("link");
+        link.rel = isCss ? "stylesheet" : scriptRel;
+        if (!isCss) {
+          link.as = "script";
+        }
+        link.crossOrigin = "";
+        link.href = dep;
+        if (cspNonce) {
+          link.setAttribute("nonce", cspNonce);
+        }
+        document.head.appendChild(link);
+        if (isCss) {
+          return new Promise((res, rej) => {
+            link.addEventListener("load", res);
+            link.addEventListener(
+              "error",
+              () => rej(new Error(`Unable to preload CSS for ${dep}`))
+            );
+          });
+        }
+      })
+    );
+  }
+  function handlePreloadError(err) {
+    const e = new Event("vite:preloadError", {
+      cancelable: true
+    });
+    e.payload = err;
+    window.dispatchEvent(e);
+    if (!e.defaultPrevented) {
+      throw err;
+    }
+  }
+  return promise.then((res) => {
+    for (const item of res || []) {
+      if (item.status !== "rejected") continue;
+      handlePreloadError(item.reason);
+    }
+    return baseModule().catch(handlePreloadError);
+  });
+};
+const useNavigationStore = create(() => ({
+  openChat: async (target) => {
+    const app = useAppStore.getState();
+    const agentStore = useAgentStore.getState();
+    const sessionStore = useSessionStore.getState();
+    app.setView("workspace");
+    await agentStore.loadAgents();
+    let agentId = target.agentId;
+    if (!agentId && target.runner) {
+      const agents = agentStore.agents;
+      const found = agents.find(
+        (a) => a.name?.toLowerCase().includes(target.runner)
+      );
+      agentId = found?.id ?? null;
+    }
+    if (!agentId) {
+      agentId = agentStore.selectedAgentId ?? agentStore.agents[0]?.id ?? null;
+    }
+    if (!agentId) {
+      app.setConnectionStatus("disconnected");
+      return;
+    }
+    agentStore.expandAgent(agentId);
+    agentStore.selectAgent(agentId);
+    let sessionId = target.sessionId;
+    if (!sessionId) {
+      const agent = agentStore.agents.find((a) => a.id === agentId);
+      sessionId = agent?.sessions?.[0]?.id ?? null;
+    }
+    if (!sessionId && target.createIfMissing) {
+      try {
+        const api2 = await __vitePreload(() => Promise.resolve().then(() => client), true ? void 0 : void 0, import.meta.url);
+        const projData = await api2.fetchProjects();
+        const projId = projData[0]?.id;
+        if (projId) {
+          const ses = await api2.createSession(projId, agentId, `${target.runner || "new"} chat`);
+          sessionId = ses.id;
+          await agentStore.loadAgents();
+        }
+      } catch {
+      }
+    }
+    if (!sessionId) return;
+    await sessionStore.selectSession(sessionId);
+  }
+}));
 function SessionTreeItem({ session }) {
   const selectedSessionId = useSessionStore((s) => s.selectedSessionId);
-  const selectSession = useSessionStore((s) => s.selectSession);
+  const openChat = useNavigationStore((s) => s.openChat);
   const isSelected = selectedSessionId === session.id;
   const dotColor = session.status === "running" ? "bg-blue-400" : session.status === "error" ? "bg-red-400" : session.unread ? "bg-app-accent" : "bg-app-muted";
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "button",
     {
       className: `flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm ${isSelected ? "bg-app-selected text-app-text" : "text-app-secondary hover:bg-app-hover hover:text-app-text"}`,
-      onClick: () => selectSession(session.id),
+      onClick: () => openChat({ agentId: session.agentId, sessionId: session.id }),
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `h-2 w-2 shrink-0 rounded-full ${dotColor}` }),
         session.hidden && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-app-muted text-xs", children: "👁" }),
@@ -7699,18 +7879,73 @@ function SchedulesSection() {
     /* @__PURE__ */ jsxRuntimeExports.jsx(Clock, { size: 14 })
   ] }) });
 }
+const mockConnectors = [
+  { id: "connector-github", type: "github", label: "GITHUB", account: "l1l1lkk", status: "connected" },
+  { id: "connector-gmail", type: "gmail", label: "GMAIL", account: "example@gmail...", status: "connected" }
+];
+[
+  { id: "m1", type: "user", content: "good. commit and push to main.", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m2", type: "tool_invocation", toolName: "Bash", command: "git status && git diff", summary: "git status && git diff", status: "done", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m3", type: "tool_result", toolName: "Bash", content: "On branch main\nYour branch is up to date with 'origin/main'.\nChanges not staged for commit...", exitCode: 0, createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m4", type: "tool_invocation", toolName: "Bash", command: "git log --oneline -5", summary: "git log --oneline -5", status: "done", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m5", type: "tool_result", toolName: "Bash", content: "13ae001 docs: correct backend test count\n0a07c59 docs: correct frontend test count", exitCode: 0, createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m6", type: "assistant", agentName: "Octo", agentAvatar: "🐙", content: "Pushed `ab58a28`. Two fixes in one commit: delegation single-turn contract and KaTeX math rendering in chat messages.", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m7", type: "status", label: "DONE", cost: "$0.2048", createdAt: (/* @__PURE__ */ new Date()).toISOString() }
+];
 function ConnectorsSection() {
   return /* @__PURE__ */ jsxRuntimeExports.jsx(SidebarSection, { title: "Connectors", action: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-md p-1 text-app-muted hover:bg-app-hover hover:text-app-text", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }) }), children: mockConnectors.map((c) => /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-app-hover", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "rounded bg-app-badge px-1.5 py-0.5 text-[10px] font-bold uppercase text-app-accent", children: c.label }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 truncate text-app-secondary", children: c.account })
   ] }, c.id)) });
 }
+const useRunnerStore = create((set) => ({
+  runners: [],
+  loading: false,
+  error: null,
+  loadRunners: async () => {
+    set({ loading: true, error: null });
+    try {
+      const runners = await fetchRunners();
+      set({ runners: runners.length > 0 ? runners : [] });
+    } catch (e) {
+      set({ error: String(e) });
+    } finally {
+      set({ loading: false });
+    }
+  }
+}));
 function HarnessSection() {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(SidebarSection, { title: "Harness", action: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-md p-1 text-app-muted hover:bg-app-hover hover:text-app-text", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }) }), children: mockHarnesses.map((h) => /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-app-hover", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "rounded bg-app-badge px-1.5 py-0.5 text-[10px] font-bold uppercase text-blue-300", children: h.type }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 flex-1 truncate text-app-secondary", children: h.label }),
-    h.authType && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10px] font-semibold uppercase text-app-muted", children: h.authType })
-  ] }, h.id)) });
+  const runners = useRunnerStore((s) => s.runners);
+  const openChat = useNavigationStore((s) => s.openChat);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    SidebarSection,
+    {
+      title: "Harness",
+      action: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-md p-1 text-app-muted hover:bg-app-hover hover:text-app-text", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }) }),
+      children: [
+        runners.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-2 py-1 text-xs text-app-muted", children: "No runners found" }),
+        runners.map((h) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "group flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-app-hover", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${h.status === "ready" ? "bg-green-900/30 text-green-400" : "bg-red-900/30 text-red-400"}`, children: h.type }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 flex-1 truncate text-app-secondary", children: h.label }),
+          h.authType && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10px] font-semibold uppercase text-app-muted", children: h.authType }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              className: "rounded-md p-1 text-app-muted opacity-0 group-hover:opacity-100 hover:bg-app-selected hover:text-app-text",
+              title: `Open ${h.type} chat`,
+              onClick: (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openChat({ runner: h.type, createIfMissing: true });
+              },
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 14 })
+            }
+          )
+        ] }, h.id))
+      ]
+    }
+  );
 }
 function Sidebar() {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", { className: "flex w-[280px] shrink-0 flex-col border-r border-app-border bg-app-sidebar", children: [
@@ -7822,6 +8057,8 @@ function Composer() {
   const [value, setValue] = reactExports.useState("");
   const selectedSessionId = useSessionStore((s) => s.selectedSessionId);
   const appendUserMessage = useMessageStore((s) => s.appendUserMessage);
+  const runningBySession = useMessageStore((s) => s.runningBySession);
+  const isRunning = selectedSessionId ? runningBySession[selectedSessionId] ?? false : false;
   function send() {
     const content = value.trim();
     if (!content || !selectedSessionId) return;
@@ -7840,13 +8077,13 @@ function Composer() {
             send();
           }
         },
-        placeholder: "Send a message...",
+        placeholder: isRunning ? "Send to queue, or press Esc to interrupt..." : "Send a message...",
         className: "min-h-[72px] w-full resize-none bg-transparent px-4 pt-4 pb-1 text-sm leading-6 text-app-text outline-none placeholder:text-app-muted"
       }
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between px-3 pb-3", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-lg p-2 text-app-muted hover:bg-app-hover hover:text-app-text", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Paperclip, { size: 17 }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: send, disabled: !value.trim(), className: "flex h-9 w-9 items-center justify-center rounded-xl bg-app-accent text-white hover:bg-violet-600 disabled:cursor-not-allowed disabled:opacity-40 transition-colors", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowUp, { size: 17 }) })
+      isRunning ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "flex h-9 w-9 items-center justify-center rounded-xl bg-red-500 text-white hover:bg-red-400", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Square, { size: 15 }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: send, disabled: !value.trim(), className: "flex h-9 w-9 items-center justify-center rounded-xl bg-app-accent text-white hover:bg-violet-600 disabled:cursor-not-allowed disabled:opacity-40 transition-colors", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowUp, { size: 17 }) })
     ] })
   ] }) }) });
 }
@@ -7901,13 +8138,18 @@ function Placeholder({ title }) {
 }
 function App() {
   const loadAgents = useAgentStore((s) => s.loadAgents);
+  const loadRunners = useRunnerStore((s) => s.loadRunners);
   reactExports.useEffect(() => {
     loadAgents();
-    const interval = setInterval(loadAgents, 15e3);
+    loadRunners();
+    const interval = setInterval(() => {
+      loadAgents();
+      loadRunners();
+    }, 15e3);
     return () => clearInterval(interval);
   }, []);
   return /* @__PURE__ */ jsxRuntimeExports.jsx(AppShell, {});
 }
-client.createRoot(document.getElementById("root")).render(
+client$1.createRoot(document.getElementById("root")).render(
   /* @__PURE__ */ jsxRuntimeExports.jsx(React$2.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })
 );
