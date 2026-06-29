@@ -15,6 +15,9 @@ from forge.cli.commands_agent import agent_app
 from forge.cli.commands_session import session_app
 from forge.cli.commands_serve import serve_app
 from forge.cli.commands_ask import ask_command, chat_command
+from forge.cli.commands_task import task_app
+from forge.cli.commands_schedule import schedule_app
+from forge.cli.commands_tunnel import tunnel_app
 from forge.core.config import settings
 from forge.core.logging import setup_logging
 
@@ -34,6 +37,11 @@ app.add_typer(serve_app, name="serve", help="Start the daemon")
 # Register ask/chat as direct top-level commands
 app.command(name="ask")(ask_command)
 app.command(name="chat")(chat_command)
+
+# Register task subcommand group
+app.add_typer(task_app, name="task", help="Manage background tasks")
+app.add_typer(schedule_app, name="schedule", help="Manage scheduled tasks")
+app.add_typer(tunnel_app, name="tunnel", help="Manage Cloudflare tunnel")
 
 
 @app.callback()

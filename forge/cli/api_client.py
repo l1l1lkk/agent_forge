@@ -31,6 +31,18 @@ class APIClient:
     def _url(self, path: str) -> str:
         return f"{self.base_url}{path}"
 
+    def _make_get(self, path: str, params: dict | None = None) -> dict:
+        with httpx.Client() as client:
+            r = client.get(self._url(path), params=params, headers=self._headers())
+            r.raise_for_status()
+            return r.json()
+
+    def _make_post(self, path: str, json_data: dict | None = None) -> dict:
+        with httpx.Client() as client:
+            r = client.post(self._url(path), json=json_data, headers=self._headers())
+            r.raise_for_status()
+            return r.json()
+
     # ── Projects ────────────────────────────────────────────────
 
     def list_projects(self) -> list[dict]:

@@ -19,17 +19,27 @@ def serve(
         settings.port, "--port", "-p", help="Bind port"
     ),
     tunnel: bool = typer.Option(
-        False, "--tunnel", help="Also start a Cloudflare tunnel (not yet implemented)"
+        False, "--tunnel", help="Also start a Cloudflare tunnel for public access"
     ),
 ):
-    """Start the forge-agent daemon (FastAPI + Uvicorn)."""
+    """Start the forge-agent daemon (FastAPI + Uvicorn). Optionally with Cloudflare tunnel."""
     import logging
 
     logger = logging.getLogger("forge.serve")
     logger.info(f"Starting forge-agent daemon on {host}:{port}")
 
     if tunnel:
-        logger.warning("Cloudflare tunnel not yet implemented (Milestone 8)")
+        logger.info("Starting Cloudflare tunnel...")
+        from forge.services.tunnel_manager import TunnelManager
+        import asyncio as aio
+
+        async def _start_tunnel():
+            mgr = TunnelManager()
+            url = await mgr.start(f"http://{host}:{port}")
+            logger.info("Public URL: %s", url)
+            print(f"\n  Public URL: {url}\n")
+
+        aio.run(_start_tunnel())
 
     uvicorn.run(
         "forge.api.app:app",

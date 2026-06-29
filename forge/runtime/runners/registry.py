@@ -30,8 +30,9 @@ class RunnerRegistry:
         return list(self._runners.keys())
 
 
+from forge.runtime.runners.local_model_runner import LocalModelRunner
+
 # Global registry with default runners
 registry = RunnerRegistry()
 registry.register(ClaudeRunner())
-# Future: registry.register(CodexRunner())
-# Future: registry.register(OpenAICompatibleRunner())
+registry.register(LocalModelRunner())
