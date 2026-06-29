@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "forge-agent"
-version = "0.0.1rc1"
+version = "0.0.2rc1"
 description = "AI Coding CLI Workbench — a CLI-first, daemon-based system for controlling AI coding agents"
 readme = "README.md"
 license = { text = "MIT" }
