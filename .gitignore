@@ -41,5 +41,6 @@ htmlcov/
 # Claude
 .claude/
 
-# Node (for future frontend)
+# Node (frontend)
 node_modules/
+frontend/dist/

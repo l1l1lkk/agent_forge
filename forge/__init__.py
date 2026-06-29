@@ -1,3 +1,3 @@
 """forge-agent: AI Coding CLI Workbench."""
 
-__version__ = "0.0.2rc1"
+__version__ = "0.0.3rc1"
