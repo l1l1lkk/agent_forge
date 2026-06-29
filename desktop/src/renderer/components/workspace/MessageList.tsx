@@ -10,8 +10,8 @@ import { ErrorCard } from '../messages/ErrorCard'
 
 export function MessageList() {
   const selectedSessionId = useSessionStore((s) => s.selectedSessionId)
-  const getMessages = useMessageStore((s) => s.getMessages)
-  const messages = getMessages(selectedSessionId)
+  const messagesBySession = useMessageStore((s) => s.messagesBySession)
+  const messages = messagesBySession[selectedSessionId || ''] ?? []
   const endRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages.length])

@@ -196,6 +196,7 @@ class ClaudeRunner(BaseRunner):
         cmd = [
             self._claude_bin,
             "-p",  # non-interactive print mode
+            "--verbose",  # required for stream-json with --print
             "--output-format", "stream-json",
             "--include-partial-messages",
         ]

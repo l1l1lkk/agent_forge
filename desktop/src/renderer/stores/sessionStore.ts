@@ -18,17 +18,19 @@ export const useSessionStore = create<SessionStore>((set, get) => ({
     // Disconnect previous WS
     if (prev) disconnectWS()
 
-    // Load messages from REST
+    // Load messages from REST (always set, even if empty, to clear old session)
     try {
       const messages = await fetchMessages(sessionId)
-      if (messages.length > 0) {
-        useMessageStore.getState().setMessages(sessionId, messages)
-      }
-    } catch { /* keep mock */ }
+      useMessageStore.getState().setMessages(sessionId, messages)
+    } catch {
+      useMessageStore.getState().setMessages(sessionId, [])
+    }
 
     // Connect WebSocket for live events
-    connectWS(sessionId, (msg) => {
-      useMessageStore.getState().appendMessage(sessionId, msg)
+    connectWS(sessionId, (msgs) => {
+      for (const msg of msgs) {
+        useMessageStore.getState().appendMessage(sessionId, msg)
+      }
     })
   },
 }))

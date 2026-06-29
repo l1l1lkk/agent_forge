@@ -7167,42 +7167,6 @@ const useAppStore = create((set) => ({
   setView: (view) => set({ view }),
   setConnectionStatus: (connectionStatus) => set({ connectionStatus })
 }));
-const mockAgents = [
-  { id: "agent-octo", name: "Octo", avatar: "🐙", sessions: [
-    { id: "session-root", agentId: "agent-octo", name: "root", status: "idle" },
-    { id: "session-octopus", agentId: "agent-octo", name: "octopus", status: "idle", unread: true },
-    { id: "session-archerchat", agentId: "agent-octo", name: "ArcherChat", status: "idle" },
-    { id: "session-endlex", agentId: "agent-octo", name: "Endlex", status: "idle" },
-    { id: "session-ai-zto", agentId: "agent-octo", name: "AI-ZTO", status: "idle" }
-  ] },
-  { id: "agent-vera", name: "Vera", avatar: "🔬", sessions: [
-    { id: "session-hidden", agentId: "agent-vera", name: "+1 delegation hidden", status: "idle", hidden: true },
-    { id: "session-review", agentId: "agent-vera", name: "review", status: "idle" }
-  ] },
-  { id: "agent-charlie", name: "Charlie", avatar: "🦉", sessions: [
-    { id: "session-stock", agentId: "agent-charlie", name: "stock", status: "idle" }
-  ] },
-  { id: "agent-weber", name: "Weber", avatar: "🛠", sessions: [
-    { id: "session-ideas", agentId: "agent-weber", name: "ideas", status: "idle" }
-  ] }
-];
-const mockConnectors = [
-  { id: "connector-github", type: "github", label: "GITHUB", account: "l1l1lkk", status: "connected" },
-  { id: "connector-gmail", type: "gmail", label: "GMAIL", account: "example@gmail...", status: "connected" }
-];
-const mockHarnesses = [
-  { id: "harness-codex", type: "codex", label: "codex-gpt", authType: "oauth", status: "ready" },
-  { id: "harness-claude", type: "claude", label: "claude", authType: "oauth", status: "ready" }
-];
-const mockMessages = [
-  { id: "m1", type: "user", content: "good. commit and push to main.", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
-  { id: "m2", type: "tool_invocation", toolName: "Bash", command: "git status && git diff", summary: "git status && git diff", status: "done", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
-  { id: "m3", type: "tool_result", toolName: "Bash", content: "On branch main\nYour branch is up to date with 'origin/main'.\nChanges not staged for commit...", exitCode: 0, createdAt: (/* @__PURE__ */ new Date()).toISOString() },
-  { id: "m4", type: "tool_invocation", toolName: "Bash", command: "git log --oneline -5", summary: "git log --oneline -5", status: "done", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
-  { id: "m5", type: "tool_result", toolName: "Bash", content: "13ae001 docs: correct backend test count\n0a07c59 docs: correct frontend test count", exitCode: 0, createdAt: (/* @__PURE__ */ new Date()).toISOString() },
-  { id: "m6", type: "assistant", agentName: "Octo", agentAvatar: "🐙", content: "Pushed `ab58a28`. Two fixes in one commit: delegation single-turn contract and KaTeX math rendering in chat messages.", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
-  { id: "m7", type: "status", label: "DONE", cost: "$0.2048", createdAt: (/* @__PURE__ */ new Date()).toISOString() }
-];
 function api() {
   if (window.forgeDesktop?.api) return window.forgeDesktop.api;
   return {
@@ -7247,12 +7211,15 @@ function _avatar(name) {
   return map[name] || map["default"];
 }
 const useAgentStore = create((set, get) => ({
-  agents: mockAgents,
-  expandedAgentIds: mockAgents.map((a) => a.id),
+  agents: [],
+  expandedAgentIds: [],
   selectedAgentId: null,
   loading: false,
+  error: null,
+  demoMode: false,
   loadAgents: async () => {
-    set({ loading: true });
+    if (get().demoMode) return;
+    set({ loading: true, error: null });
     try {
       const agents = await fetchAgents();
       const sessions = await fetchSessions();
@@ -7261,14 +7228,25 @@ const useAgentStore = create((set, get) => ({
         sessions: sessions.filter((s) => s.agentId === a.id)
       }));
       set({
-        agents: merged.length > 0 ? merged : mockAgents,
-        expandedAgentIds: merged.length > 0 ? merged.map((a) => a.id) : get().expandedAgentIds,
+        agents: merged,
+        expandedAgentIds: merged.map((a) => a.id),
         selectedAgentId: get().selectedAgentId || (merged[0]?.id ?? null)
       });
-    } catch {
+    } catch (e) {
+      set({ error: String(e), agents: [] });
     } finally {
       set({ loading: false });
     }
+  },
+  enableDemoMode: () => {
+    const { mockAgents } = require("../api/mockData");
+    set({
+      demoMode: true,
+      agents: mockAgents,
+      expandedAgentIds: mockAgents.map((a) => a.id),
+      selectedAgentId: mockAgents[0]?.id ?? null,
+      error: null
+    });
   },
   toggleAgent: (agentId) => {
     const cur = get().expandedAgentIds;
@@ -7276,26 +7254,88 @@ const useAgentStore = create((set, get) => ({
   },
   selectAgent: (selectedAgentId) => set({ selectedAgentId })
 }));
+function adaptEvent(event) {
+  const etype = event?.type;
+  const payload = event?.payload || {};
+  const id2 = event?.id || `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const now = (/* @__PURE__ */ new Date()).toISOString();
+  switch (etype) {
+    case "session_started":
+      return { id: id2, type: "status", label: "SESSION STARTED", createdAt: now };
+    case "assistant_text_delta": {
+      const text = payload.text || "";
+      if (!text.trim()) return null;
+      return { id: `delta-${id2}`, type: "assistant", agentName: "", agentAvatar: "🤖", content: text, createdAt: now };
+    }
+    case "assistant_message": {
+      const text = payload.text || payload.content || JSON.stringify(payload.content_blocks || payload);
+      if (!text || text.startsWith("[{")) return null;
+      return { id: id2, type: "assistant", agentName: "", agentAvatar: "🤖", content: text, createdAt: now };
+    }
+    case "tool_call_started": {
+      const input = payload.input || {};
+      const cmd = input.command || JSON.stringify(input).slice(0, 200);
+      return {
+        id: payload.id || id2,
+        type: "tool_invocation",
+        toolName: payload.tool || "unknown",
+        command: cmd,
+        summary: cmd,
+        status: "running",
+        createdAt: now
+      };
+    }
+    case "tool_result": {
+      const content = typeof payload.content === "string" ? payload.content.slice(0, 3e3) : JSON.stringify(payload.content).slice(0, 3e3);
+      return {
+        id: `result-${payload.tool_use_id || id2}`,
+        type: "tool_result",
+        toolName: payload.tool || "",
+        content,
+        exitCode: payload.exit_code ?? (payload.is_error ? 1 : 0),
+        createdAt: now
+      };
+    }
+    case "session_status": {
+      const st = payload.status || "";
+      if (st === "completed" || st === "idle")
+        return { id: id2, type: "status", label: "DONE", cost: payload.usage?.cost, createdAt: now };
+      if (st === "running")
+        return { id: id2, type: "status", label: "RUNNING", createdAt: now };
+      return null;
+    }
+    case "error":
+      return { id: id2, type: "error", title: payload.error || "Error", detail: payload.message || "", createdAt: now };
+    default:
+      return null;
+  }
+}
 let ws = null;
 let currentSessionId = null;
 let handler = null;
-function connectWS(sessionId, onMessage) {
+let reconnectTimer = null;
+function connectWS(sessionId, onMessages) {
   if (currentSessionId === sessionId && ws?.readyState === WebSocket.OPEN) return;
   disconnectWS();
   currentSessionId = sessionId;
-  handler = onMessage;
-  const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  const url = `${proto}//127.0.0.1:8765/ws`;
-  ws = new WebSocket(url);
+  handler = onMessages;
+  _connect();
+}
+function _connect() {
+  if (!currentSessionId) return;
+  const wsUrl = `ws://127.0.0.1:8765/api/ws`;
+  ws = new WebSocket(wsUrl);
   ws.onopen = () => {
-    ws?.send(JSON.stringify({ type: "subscribe_session", session_id: sessionId, after_seq: 0 }));
+    ws?.send(JSON.stringify({ type: "subscribe_session", session_id: currentSessionId, after_seq: 0 }));
   };
   ws.onmessage = (e) => {
     try {
       const data = JSON.parse(e.data);
       if (data.type === "event") {
-        const msg = adaptEvent(data.event);
-        if (msg) handler?.(msg);
+        const result = adaptEvent(data.event);
+        if (!result) return;
+        const msgs = Array.isArray(result) ? result : [result];
+        if (msgs.length > 0) handler?.(msgs);
       }
     } catch {
     }
@@ -7303,16 +7343,42 @@ function connectWS(sessionId, onMessage) {
   ws.onerror = () => {
   };
   ws.onclose = () => {
+    ws = null;
+    if (currentSessionId) {
+      reconnectTimer = setTimeout(_connect, 2e3);
+    }
   };
 }
 function disconnectWS() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
   if (ws) {
+    ws.onclose = null;
     ws.close();
     ws = null;
   }
   currentSessionId = null;
   handler = null;
 }
+const mockConnectors = [
+  { id: "connector-github", type: "github", label: "GITHUB", account: "l1l1lkk", status: "connected" },
+  { id: "connector-gmail", type: "gmail", label: "GMAIL", account: "example@gmail...", status: "connected" }
+];
+const mockHarnesses = [
+  { id: "harness-codex", type: "codex", label: "codex-gpt", authType: "oauth", status: "ready" },
+  { id: "harness-claude", type: "claude", label: "claude", authType: "oauth", status: "ready" }
+];
+const mockMessages = [
+  { id: "m1", type: "user", content: "good. commit and push to main.", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m2", type: "tool_invocation", toolName: "Bash", command: "git status && git diff", summary: "git status && git diff", status: "done", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m3", type: "tool_result", toolName: "Bash", content: "On branch main\nYour branch is up to date with 'origin/main'.\nChanges not staged for commit...", exitCode: 0, createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m4", type: "tool_invocation", toolName: "Bash", command: "git log --oneline -5", summary: "git log --oneline -5", status: "done", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m5", type: "tool_result", toolName: "Bash", content: "13ae001 docs: correct backend test count\n0a07c59 docs: correct frontend test count", exitCode: 0, createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m6", type: "assistant", agentName: "Octo", agentAvatar: "🐙", content: "Pushed `ab58a28`. Two fixes in one commit: delegation single-turn contract and KaTeX math rendering in chat messages.", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m7", type: "status", label: "DONE", cost: "$0.2048", createdAt: (/* @__PURE__ */ new Date()).toISOString() }
+];
 const useMessageStore = create((set, get) => ({
   messagesBySession: { "session-octopus": mockMessages },
   getMessages: (sessionId) => {
@@ -7347,13 +7413,14 @@ const useSessionStore = create((set, get) => ({
     if (prev) disconnectWS();
     try {
       const messages = await fetchMessages(sessionId);
-      if (messages.length > 0) {
-        useMessageStore.getState().setMessages(sessionId, messages);
-      }
+      useMessageStore.getState().setMessages(sessionId, messages);
     } catch {
+      useMessageStore.getState().setMessages(sessionId, []);
     }
-    connectWS(sessionId, (msg) => {
-      useMessageStore.getState().appendMessage(sessionId, msg);
+    connectWS(sessionId, (msgs) => {
+      for (const msg of msgs) {
+        useMessageStore.getState().appendMessage(sessionId, msg);
+      }
     });
   }
 }));
@@ -7732,8 +7799,8 @@ function ErrorCard({ message }) {
 }
 function MessageList() {
   const selectedSessionId = useSessionStore((s) => s.selectedSessionId);
-  const getMessages = useMessageStore((s) => s.getMessages);
-  const messages = getMessages(selectedSessionId);
+  const messagesBySession = useMessageStore((s) => s.messagesBySession);
+  const messages = messagesBySession[selectedSessionId || ""] ?? [];
   const endRef = reactExports.useRef(null);
   reactExports.useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });

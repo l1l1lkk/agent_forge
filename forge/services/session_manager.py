@@ -240,13 +240,19 @@ class SessionManager:
                 event_sink=event_sink,
             )
 
-            # Save assistant messages from result
+            # Save assistant messages from result (skip raw JSON payloads, only save clean text)
             for msg_data in result.messages:
+                content = msg_data.get("content", "")
+                # Skip raw JSON payload dumps
+                if content.startswith("{") and ("content_blocks" in content or "thinking" in content):
+                    continue
+                if not content.strip():
+                    continue
                 try:
                     await self.add_message(
                         session_id,
                         msg_data.get("role", "assistant"),
-                        msg_data.get("content", ""),
+                        content,
                     )
                 except Exception as e:
                     logger.warning("Failed to save assistant message: %s", e)
