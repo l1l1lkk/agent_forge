@@ -9,7 +9,7 @@ forge-agent is not a chatbot or a chat UI. It's a developer workbench built arou
 - **Sessions & messages** — persistent, queryable conversation history
 - **Daemon architecture** — long-running background service, not tied to a terminal
 - **CLI-first** — all functionality available via `forge` commands
-- **Runner pluggable** — Claude, Claude, local models (coming in future milestones)
+- **Runner pluggable** — Claude, Codex, OpenAI-compatible, local models
 
 ## Installation
 
@@ -21,7 +21,7 @@ forge-agent is not a chatbot or a chat UI. It's a developer workbench built arou
 ### Install from source
 
 ```bash
-git clone https://github.com/forge-agent/forge-agent.git
+git clone https://github.com/l1l1lkk/agent_forge.git
 cd forge-agent
 pip install -e ".[dev]"
 ```
