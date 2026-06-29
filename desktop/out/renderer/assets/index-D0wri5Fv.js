@@ -266,7 +266,7 @@ react_production_min.version = "18.3.1";
   react.exports = react_production_min;
 }
 var reactExports = react.exports;
-const React = /* @__PURE__ */ getDefaultExportFromCjs(reactExports);
+const React$2 = /* @__PURE__ */ getDefaultExportFromCjs(reactExports);
 /**
  * @license React
  * react-jsx-runtime.production.min.js
@@ -6966,6 +6966,257 @@ var m = reactDomExports;
   client.createRoot = m.createRoot;
   client.hydrateRoot = m.hydrateRoot;
 }
+const __vite_import_meta_env__$1 = {};
+const createStoreImpl = (createState) => {
+  let state;
+  const listeners = /* @__PURE__ */ new Set();
+  const setState = (partial, replace) => {
+    const nextState = typeof partial === "function" ? partial(state) : partial;
+    if (!Object.is(nextState, state)) {
+      const previousState = state;
+      state = (replace != null ? replace : typeof nextState !== "object" || nextState === null) ? nextState : Object.assign({}, state, nextState);
+      listeners.forEach((listener) => listener(state, previousState));
+    }
+  };
+  const getState = () => state;
+  const getInitialState = () => initialState;
+  const subscribe = (listener) => {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  };
+  const destroy = () => {
+    if ((__vite_import_meta_env__$1 ? "production" : void 0) !== "production") {
+      console.warn(
+        "[DEPRECATED] The `destroy` method will be unsupported in a future version. Instead use unsubscribe function returned by subscribe. Everything will be garbage-collected if store is garbage-collected."
+      );
+    }
+    listeners.clear();
+  };
+  const api = { setState, getState, getInitialState, subscribe, destroy };
+  const initialState = state = createState(setState, getState, api);
+  return api;
+};
+const createStore = (createState) => createState ? createStoreImpl(createState) : createStoreImpl;
+var withSelector = { exports: {} };
+var withSelector_production = {};
+var shim$2 = { exports: {} };
+var useSyncExternalStoreShim_production = {};
+/**
+ * @license React
+ * use-sync-external-store-shim.production.js
+ *
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+var React$1 = reactExports;
+function is$1(x2, y2) {
+  return x2 === y2 && (0 !== x2 || 1 / x2 === 1 / y2) || x2 !== x2 && y2 !== y2;
+}
+var objectIs$1 = "function" === typeof Object.is ? Object.is : is$1, useState = React$1.useState, useEffect$1 = React$1.useEffect, useLayoutEffect = React$1.useLayoutEffect, useDebugValue$2 = React$1.useDebugValue;
+function useSyncExternalStore$2(subscribe, getSnapshot) {
+  var value = getSnapshot(), _useState = useState({ inst: { value, getSnapshot } }), inst = _useState[0].inst, forceUpdate = _useState[1];
+  useLayoutEffect(
+    function() {
+      inst.value = value;
+      inst.getSnapshot = getSnapshot;
+      checkIfSnapshotChanged(inst) && forceUpdate({ inst });
+    },
+    [subscribe, value, getSnapshot]
+  );
+  useEffect$1(
+    function() {
+      checkIfSnapshotChanged(inst) && forceUpdate({ inst });
+      return subscribe(function() {
+        checkIfSnapshotChanged(inst) && forceUpdate({ inst });
+      });
+    },
+    [subscribe]
+  );
+  useDebugValue$2(value);
+  return value;
+}
+function checkIfSnapshotChanged(inst) {
+  var latestGetSnapshot = inst.getSnapshot;
+  inst = inst.value;
+  try {
+    var nextValue = latestGetSnapshot();
+    return !objectIs$1(inst, nextValue);
+  } catch (error) {
+    return true;
+  }
+}
+function useSyncExternalStore$1(subscribe, getSnapshot) {
+  return getSnapshot();
+}
+var shim$1 = "undefined" === typeof window || "undefined" === typeof window.document || "undefined" === typeof window.document.createElement ? useSyncExternalStore$1 : useSyncExternalStore$2;
+useSyncExternalStoreShim_production.useSyncExternalStore = void 0 !== React$1.useSyncExternalStore ? React$1.useSyncExternalStore : shim$1;
+{
+  shim$2.exports = useSyncExternalStoreShim_production;
+}
+var shimExports = shim$2.exports;
+/**
+ * @license React
+ * use-sync-external-store-shim/with-selector.production.js
+ *
+ * Copyright (c) Meta Platforms, Inc. and affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+var React = reactExports, shim = shimExports;
+function is(x2, y2) {
+  return x2 === y2 && (0 !== x2 || 1 / x2 === 1 / y2) || x2 !== x2 && y2 !== y2;
+}
+var objectIs = "function" === typeof Object.is ? Object.is : is, useSyncExternalStore = shim.useSyncExternalStore, useRef = React.useRef, useEffect = React.useEffect, useMemo = React.useMemo, useDebugValue$1 = React.useDebugValue;
+withSelector_production.useSyncExternalStoreWithSelector = function(subscribe, getSnapshot, getServerSnapshot, selector, isEqual) {
+  var instRef = useRef(null);
+  if (null === instRef.current) {
+    var inst = { hasValue: false, value: null };
+    instRef.current = inst;
+  } else inst = instRef.current;
+  instRef = useMemo(
+    function() {
+      function memoizedSelector(nextSnapshot) {
+        if (!hasMemo) {
+          hasMemo = true;
+          memoizedSnapshot = nextSnapshot;
+          nextSnapshot = selector(nextSnapshot);
+          if (void 0 !== isEqual && inst.hasValue) {
+            var currentSelection = inst.value;
+            if (isEqual(currentSelection, nextSnapshot))
+              return memoizedSelection = currentSelection;
+          }
+          return memoizedSelection = nextSnapshot;
+        }
+        currentSelection = memoizedSelection;
+        if (objectIs(memoizedSnapshot, nextSnapshot)) return currentSelection;
+        var nextSelection = selector(nextSnapshot);
+        if (void 0 !== isEqual && isEqual(currentSelection, nextSelection))
+          return memoizedSnapshot = nextSnapshot, currentSelection;
+        memoizedSnapshot = nextSnapshot;
+        return memoizedSelection = nextSelection;
+      }
+      var hasMemo = false, memoizedSnapshot, memoizedSelection, maybeGetServerSnapshot = void 0 === getServerSnapshot ? null : getServerSnapshot;
+      return [
+        function() {
+          return memoizedSelector(getSnapshot());
+        },
+        null === maybeGetServerSnapshot ? void 0 : function() {
+          return memoizedSelector(maybeGetServerSnapshot());
+        }
+      ];
+    },
+    [getSnapshot, getServerSnapshot, selector, isEqual]
+  );
+  var value = useSyncExternalStore(subscribe, instRef[0], instRef[1]);
+  useEffect(
+    function() {
+      inst.hasValue = true;
+      inst.value = value;
+    },
+    [value]
+  );
+  useDebugValue$1(value);
+  return value;
+};
+{
+  withSelector.exports = withSelector_production;
+}
+var withSelectorExports = withSelector.exports;
+const useSyncExternalStoreExports = /* @__PURE__ */ getDefaultExportFromCjs(withSelectorExports);
+const __vite_import_meta_env__ = {};
+const { useDebugValue } = React$2;
+const { useSyncExternalStoreWithSelector } = useSyncExternalStoreExports;
+let didWarnAboutEqualityFn = false;
+const identity = (arg) => arg;
+function useStore(api, selector = identity, equalityFn) {
+  if ((__vite_import_meta_env__ ? "production" : void 0) !== "production" && equalityFn && !didWarnAboutEqualityFn) {
+    console.warn(
+      "[DEPRECATED] Use `createWithEqualityFn` instead of `create` or use `useStoreWithEqualityFn` instead of `useStore`. They can be imported from 'zustand/traditional'. https://github.com/pmndrs/zustand/discussions/1937"
+    );
+    didWarnAboutEqualityFn = true;
+  }
+  const slice = useSyncExternalStoreWithSelector(
+    api.subscribe,
+    api.getState,
+    api.getServerState || api.getInitialState,
+    selector,
+    equalityFn
+  );
+  useDebugValue(slice);
+  return slice;
+}
+const createImpl = (createState) => {
+  if ((__vite_import_meta_env__ ? "production" : void 0) !== "production" && typeof createState !== "function") {
+    console.warn(
+      "[DEPRECATED] Passing a vanilla store will be unsupported in a future version. Instead use `import { useStore } from 'zustand'`."
+    );
+  }
+  const api = typeof createState === "function" ? createStore(createState) : createState;
+  const useBoundStore = (selector, equalityFn) => useStore(api, selector, equalityFn);
+  Object.assign(useBoundStore, api);
+  return useBoundStore;
+};
+const create = (createState) => createState ? createImpl(createState) : createImpl;
+const useAppStore = create((set) => ({
+  view: "workspace",
+  connectionStatus: "connected",
+  daemonLabel: "Local",
+  setView: (view) => set({ view }),
+  setConnectionStatus: (connectionStatus) => set({ connectionStatus })
+}));
+const mockAgents = [
+  { id: "agent-octo", name: "Octo", avatar: "🐙", sessions: [
+    { id: "session-root", agentId: "agent-octo", name: "root", status: "idle" },
+    { id: "session-octopus", agentId: "agent-octo", name: "octopus", status: "idle", unread: true },
+    { id: "session-archerchat", agentId: "agent-octo", name: "ArcherChat", status: "idle" },
+    { id: "session-endlex", agentId: "agent-octo", name: "Endlex", status: "idle" },
+    { id: "session-ai-zto", agentId: "agent-octo", name: "AI-ZTO", status: "idle" }
+  ] },
+  { id: "agent-vera", name: "Vera", avatar: "🔬", sessions: [
+    { id: "session-hidden", agentId: "agent-vera", name: "+1 delegation hidden", status: "idle", hidden: true },
+    { id: "session-review", agentId: "agent-vera", name: "review", status: "idle" }
+  ] },
+  { id: "agent-charlie", name: "Charlie", avatar: "🦉", sessions: [
+    { id: "session-stock", agentId: "agent-charlie", name: "stock", status: "idle" }
+  ] },
+  { id: "agent-weber", name: "Weber", avatar: "🛠", sessions: [
+    { id: "session-ideas", agentId: "agent-weber", name: "ideas", status: "idle" }
+  ] }
+];
+const mockConnectors = [
+  { id: "connector-github", type: "github", label: "GITHUB", account: "l1l1lkk", status: "connected" },
+  { id: "connector-gmail", type: "gmail", label: "GMAIL", account: "example@gmail...", status: "connected" }
+];
+const mockHarnesses = [
+  { id: "harness-codex", type: "codex", label: "codex-gpt", authType: "oauth", status: "ready" },
+  { id: "harness-claude", type: "claude", label: "claude", authType: "oauth", status: "ready" }
+];
+const mockMessages = [
+  { id: "m1", type: "user", content: "good. commit and push to main.", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m2", type: "tool_invocation", toolName: "Bash", command: "git status && git diff", summary: "git status && git diff", status: "done", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m3", type: "tool_result", toolName: "Bash", content: "On branch main\nYour branch is up to date with 'origin/main'.\nChanges not staged for commit...", exitCode: 0, createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m4", type: "tool_invocation", toolName: "Bash", command: "git log --oneline -5", summary: "git log --oneline -5", status: "done", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m5", type: "tool_result", toolName: "Bash", content: "13ae001 docs: correct backend test count\n0a07c59 docs: correct frontend test count", exitCode: 0, createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m6", type: "assistant", agentName: "Octo", agentAvatar: "🐙", content: "Pushed `ab58a28`. Two fixes in one commit: delegation single-turn contract and KaTeX math rendering in chat messages.", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
+  { id: "m7", type: "status", label: "DONE", cost: "$0.2048", createdAt: (/* @__PURE__ */ new Date()).toISOString() }
+];
+const useAgentStore = create((set, get) => ({
+  agents: mockAgents,
+  expandedAgentIds: ["agent-octo", "agent-vera", "agent-charlie", "agent-weber"],
+  selectedAgentId: "agent-octo",
+  toggleAgent: (agentId) => {
+    const current = get().expandedAgentIds;
+    set({ expandedAgentIds: current.includes(agentId) ? current.filter((id2) => id2 !== agentId) : [...current, agentId] });
+  },
+  selectAgent: (selectedAgentId) => set({ selectedAgentId })
+}));
+const useSessionStore = create((set) => ({
+  selectedSessionId: "session-octopus",
+  selectSession: (selectedSessionId) => set({ selectedSessionId })
+}));
 /**
  * @license lucide-react v0.441.0 - ISC
  *
@@ -7053,12 +7304,50 @@ const createLucideIcon = (iconName, iconNode) => {
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const Activity = createLucideIcon("Activity", [
+const ArrowUp = createLucideIcon("ArrowUp", [
+  ["path", { d: "m5 12 7-7 7 7", key: "hav0vg" }],
+  ["path", { d: "M12 19V5", key: "x0mq9r" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const ChevronDown = createLucideIcon("ChevronDown", [
+  ["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const ChevronRight = createLucideIcon("ChevronRight", [
+  ["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const Clock = createLucideIcon("Clock", [
+  ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+  ["polyline", { points: "12 6 12 12 16 14", key: "68esgv" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const Paperclip = createLucideIcon("Paperclip", [
   [
     "path",
     {
-      d: "M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2",
-      key: "169zse"
+      d: "m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48",
+      key: "1u3ebp"
     }
   ]
 ]);
@@ -7068,8 +7357,9 @@ const Activity = createLucideIcon("Activity", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const Play = createLucideIcon("Play", [
-  ["polygon", { points: "6 3 20 12 6 21 6 3", key: "1oa8hb" }]
+const Plus = createLucideIcon("Plus", [
+  ["path", { d: "M5 12h14", key: "1ays0h" }],
+  ["path", { d: "M12 5v14", key: "s699le" }]
 ]);
 /**
  * @license lucide-react v0.441.0 - ISC
@@ -7077,32 +7367,15 @@ const Play = createLucideIcon("Play", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
-const RefreshCw = createLucideIcon("RefreshCw", [
-  ["path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8", key: "v9h5vc" }],
-  ["path", { d: "M21 3v5h-5", key: "1q7to0" }],
-  ["path", { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16", key: "3uifl3" }],
-  ["path", { d: "M8 16H3v5", key: "1cv678" }]
-]);
-/**
- * @license lucide-react v0.441.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const Server = createLucideIcon("Server", [
-  ["rect", { width: "20", height: "8", x: "2", y: "2", rx: "2", ry: "2", key: "ngkwjq" }],
-  ["rect", { width: "20", height: "8", x: "2", y: "14", rx: "2", ry: "2", key: "iecqi9" }],
-  ["line", { x1: "6", x2: "6.01", y1: "6", y2: "6", key: "16zg32" }],
-  ["line", { x1: "6", x2: "6.01", y1: "18", y2: "18", key: "nzw8ys" }]
-]);
-/**
- * @license lucide-react v0.441.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const Square = createLucideIcon("Square", [
-  ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }]
+const Settings = createLucideIcon("Settings", [
+  [
+    "path",
+    {
+      d: "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z",
+      key: "1qme2f"
+    }
+  ],
+  ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
 ]);
 /**
  * @license lucide-react v0.441.0 - ISC
@@ -7114,173 +7387,331 @@ const Terminal = createLucideIcon("Terminal", [
   ["polyline", { points: "4 17 10 11 4 5", key: "akl6gq" }],
   ["line", { x1: "12", x2: "20", y1: "19", y2: "19", key: "q2wloq" }]
 ]);
-/**
- * @license lucide-react v0.441.0 - ISC
- *
- * This source code is licensed under the ISC license.
- * See the LICENSE file in the root directory of this source tree.
- */
-const Wrench = createLucideIcon("Wrench", [
-  [
-    "path",
-    {
-      d: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z",
-      key: "cbrjhi"
-    }
-  ]
-]);
-function App() {
-  const [bootstrap, setBootstrap] = reactExports.useState(null);
-  const [daemonStatus, setDaemonStatus] = reactExports.useState("checking");
-  const [logs, setLogs] = reactExports.useState([]);
-  const [showLogs, setShowLogs] = reactExports.useState(false);
-  const api = window.forgeDesktop;
-  const checkDaemon = async () => {
-    setDaemonStatus("checking");
-    const health = await api.daemon.health();
-    if (health) {
-      setDaemonStatus("healthy");
-      try {
-        const data = await api.api.get("/api/desktop/bootstrap");
-        setBootstrap(data);
-      } catch (e) {
-        console.error("Bootstrap failed:", e);
-      }
-    } else {
-      setDaemonStatus("unhealthy");
-    }
-  };
-  const startDaemon = async () => {
-    setDaemonStatus("starting");
-    const ok2 = await api.daemon.start();
-    if (ok2) {
-      setDaemonStatus("healthy");
-      setTimeout(checkDaemon, 500);
-    } else {
-      setDaemonStatus("unhealthy");
-    }
-  };
-  const stopDaemon = async () => {
-    await api.daemon.stop();
-    setDaemonStatus("checking");
-    setTimeout(checkDaemon, 500);
-  };
-  const restartDaemon = async () => {
-    setDaemonStatus("starting");
-    await api.daemon.restart();
-    setTimeout(checkDaemon, 1e3);
-  };
-  reactExports.useEffect(() => {
-    checkDaemon();
-    const interval = setInterval(checkDaemon, 1e4);
-    return () => clearInterval(interval);
-  }, []);
-  const statusColor = {
-    checking: "text-yellow-400",
-    healthy: "text-green-400",
-    unhealthy: "text-red-400",
-    starting: "text-blue-400"
-  }[daemonStatus];
-  const StatusIcon = {
-    checking: Activity,
-    healthy: Server,
-    unhealthy: Square,
-    starting: RefreshCw
-  }[daemonStatus];
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-screen bg-[#0f0f1a] text-gray-100 font-sans", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "border-b border-gray-800 px-6 py-4 flex items-center justify-between", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Terminal, { className: "text-blue-400", size: 28 }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "text-xl font-bold", children: "Agent Forge Desktop" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-gray-500", children: "AI Coding Workbench" })
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-4", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(StatusIcon, { className: statusColor, size: 18 }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: `text-sm font-medium ${statusColor}`, children: [
-            daemonStatus === "healthy" && "Daemon Connected",
-            daemonStatus === "unhealthy" && "Daemon Offline",
-            daemonStatus === "checking" && "Checking...",
-            daemonStatus === "starting" && "Starting..."
-          ] }),
-          bootstrap && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-xs text-gray-600 ml-1", children: [
-            "v",
-            bootstrap.health.status === "ok" ? "(active)" : ""
-          ] })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex gap-1", children: daemonStatus !== "healthy" ? /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: startDaemon, className: "px-3 py-1.5 bg-green-700 hover:bg-green-600 rounded text-sm flex items-center gap-1", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Play, { size: 14 }),
-          " Start"
-        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: restartDaemon, className: "px-3 py-1.5 bg-gray-700 hover:bg-gray-600 rounded text-sm flex items-center gap-1", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { size: 14 }),
-            " Restart"
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: stopDaemon, className: "px-3 py-1.5 bg-red-800 hover:bg-red-700 rounded text-sm flex items-center gap-1", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Square, { size: 14 }),
-            " Stop"
-          ] })
-        ] }) })
-      ] })
+function TopBar() {
+  const connectionStatus = useAppStore((s) => s.connectionStatus);
+  const daemonLabel = useAppStore((s) => s.daemonLabel);
+  const setView = useAppStore((s) => s.setView);
+  const agents = useAgentStore((s) => s.agents);
+  const selectedAgentId = useAgentStore((s) => s.selectedAgentId);
+  const selectedSessionId = useSessionStore((s) => s.selectedSessionId);
+  const agent = agents.find((a) => a.id === selectedAgentId);
+  const session = agent?.sessions.find((s) => s.id === selectedSessionId);
+  const statusClass = connectionStatus === "connected" ? "bg-emerald-400" : connectionStatus === "checking" ? "bg-yellow-400" : "bg-red-400";
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "flex h-11 items-center justify-between border-b border-app-border bg-app-topbar px-4 select-none", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-lg", children: "🌀" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-semibold tracking-tight text-app-text", children: "Agent Forge" })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "p-6", children: [
-      bootstrap && daemonStatus === "healthy" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-4 gap-4 mb-6", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(StatusCard, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Server, { size: 20 }), label: "Projects", value: bootstrap.projects_count }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(StatusCard, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Wrench, { size: 20 }), label: "Agents", value: bootstrap.agents_count }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(StatusCard, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Activity, { size: 20 }), label: "Running Sessions", value: bootstrap.running_sessions, color: "text-green-400" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(StatusCard, { icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Terminal, { size: 20 }), label: "Running Tasks", value: bootstrap.running_tasks, color: "text-blue-400" })
-      ] }),
-      bootstrap && /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "mb-6", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3", children: "Available Runners" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-3 gap-4", children: [
-          bootstrap.runners.map((r2) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `p-4 rounded-lg border ${r2.available ? "border-green-800 bg-green-900/20" : "border-gray-800 bg-gray-900/50"}`, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-medium", children: r2.name }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `text-xs px-2 py-0.5 rounded ${r2.available ? "bg-green-900 text-green-300" : "bg-gray-800 text-gray-500"}`, children: r2.available ? "Available" : "Not Found" })
-          ] }) }, r2.name)),
-          bootstrap.runners.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-600 col-span-3 text-sm", children: "No runners registered." })
-        ] })
-      ] }),
-      bootstrap && /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "mb-6", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3", children: "Features" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-4 gap-3", children: Object.entries(bootstrap.features).map(([name, enabled]) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `px-3 py-2 rounded text-sm ${enabled ? "bg-blue-900/20 text-blue-300" : "bg-gray-900/30 text-gray-600"}`, children: [
-          name.replace(/_/g, " "),
-          ": ",
-          enabled ? "On" : "Off"
-        ] }, name)) })
-      ] }),
-      !bootstrap && daemonStatus === "healthy" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center py-12", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Activity, { className: "mx-auto text-gray-600 mb-3", size: 48 }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-500", children: "Loading workspace data..." })
-      ] }),
-      daemonStatus !== "healthy" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center py-12", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Server, { className: "mx-auto text-red-600 mb-3", size: 48 }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-400 mb-4", children: "Daemon is not running" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: startDaemon, className: "px-6 py-2 bg-green-700 hover:bg-green-600 rounded-lg text-white font-medium flex items-center gap-2 mx-auto", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Play, { size: 18 }),
-          " Start Forge Daemon"
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-8", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: () => setShowLogs(!showLogs), className: "text-sm text-gray-600 hover:text-gray-400", children: [
-          showLogs ? "Hide" : "Show",
-          " Daemon Logs"
-        ] }),
-        showLogs && /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { className: "mt-2 p-4 bg-black/50 rounded-lg text-xs text-gray-400 max-h-64 overflow-y-auto font-mono", children: logs.length > 0 ? logs.join("\n") : "No logs yet. Use Start/Restart to see daemon output." })
-      ] })
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 flex-1 items-center gap-2 px-8 text-sm", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-base", children: agent?.avatar ?? "🤖" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-medium text-app-text", children: agent?.name ?? "No Agent" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-app-muted", children: "/" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-semibold text-app-text", children: session?.name ?? "No Session" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-2 rounded-full bg-app-card px-2 py-0.5 text-xs text-app-muted", children: session?.status ?? "idle" })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 text-xs text-app-muted", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `h-2 w-2 rounded-full ${statusClass}` }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: daemonLabel }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Connected" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setView("diagnostics"), className: "ml-1 rounded-lg p-1.5 text-app-muted hover:bg-app-hover hover:text-app-text", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Settings, { size: 14 }) })
     ] })
   ] });
 }
-function StatusCard({ icon, label, value, color = "text-gray-300" }) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-4 rounded-lg border border-gray-800 bg-gray-900/50", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-gray-500 mb-2", children: [
-      icon,
-      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs uppercase tracking-wider", children: label })
+function SidebarSection({ title, count, action, children }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-2 flex items-center justify-between px-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-app-muted", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: title }),
+        typeof count === "number" && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: count })
+      ] }),
+      action
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `text-2xl font-bold ${color}`, children: value })
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-1", children })
   ] });
 }
+function SessionTreeItem({ session }) {
+  const selectedSessionId = useSessionStore((s) => s.selectedSessionId);
+  const selectSession = useSessionStore((s) => s.selectSession);
+  const isSelected = selectedSessionId === session.id;
+  const dotColor = session.status === "running" ? "bg-blue-400" : session.status === "error" ? "bg-red-400" : session.unread ? "bg-app-accent" : "bg-app-muted";
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "button",
+    {
+      className: `flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm ${isSelected ? "bg-app-selected text-app-text" : "text-app-secondary hover:bg-app-hover hover:text-app-text"}`,
+      onClick: () => selectSession(session.id),
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `h-2 w-2 shrink-0 rounded-full ${dotColor}` }),
+        session.hidden && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-app-muted text-xs", children: "👁" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `min-w-0 truncate ${session.hidden ? "text-app-muted" : ""}`, children: session.name })
+      ]
+    }
+  );
+}
+function AgentTreeItem({ agent }) {
+  const expandedAgentIds = useAgentStore((s) => s.expandedAgentIds);
+  const selectedAgentId = useAgentStore((s) => s.selectedAgentId);
+  const toggleAgent = useAgentStore((s) => s.toggleAgent);
+  const selectAgent = useAgentStore((s) => s.selectAgent);
+  const isExpanded = expandedAgentIds.includes(agent.id);
+  const isSelected = selectedAgentId === agent.id;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: `group flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-sm ${isSelected ? "bg-app-selected text-app-text" : "text-app-text hover:bg-app-hover"}`,
+        onClick: () => selectAgent(agent.id),
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "text-app-muted", onClick: (e) => {
+            e.stopPropagation();
+            toggleAgent(agent.id);
+          }, children: isExpanded ? /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronDown, { size: 14 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronRight, { size: 14 }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-base", children: agent.avatar }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 flex-1 truncate font-medium", children: agent.name }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "opacity-40 hover:opacity-100 text-app-muted", onClick: (e) => e.stopPropagation(), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }) })
+        ]
+      }
+    ),
+    isExpanded && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ml-8 mt-1 space-y-1 border-l border-app-border pl-3", children: agent.sessions.map((s) => /* @__PURE__ */ jsxRuntimeExports.jsx(SessionTreeItem, { session: s }, s.id)) })
+  ] });
+}
+function AgentsSection() {
+  const agents = useAgentStore((s) => s.agents);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    SidebarSection,
+    {
+      title: "Agents",
+      action: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-md p-1 text-app-muted hover:bg-app-hover hover:text-app-text", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }) }),
+      children: agents.map((agent) => /* @__PURE__ */ jsxRuntimeExports.jsx(AgentTreeItem, { agent }, agent.id))
+    }
+  );
+}
+function SchedulesSection() {
+  const setView = useAppStore((s) => s.setView);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(SidebarSection, { title: "Schedules", count: 5, action: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-md p-1 text-app-muted hover:bg-app-hover hover:text-app-text", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }) }), children: /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "flex w-full items-center justify-between rounded-lg px-2 py-2 text-sm text-app-secondary hover:bg-app-hover hover:text-app-text", onClick: () => setView("schedules"), children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Scheduled runs" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Clock, { size: 14 })
+  ] }) });
+}
+function ConnectorsSection() {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(SidebarSection, { title: "Connectors", action: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-md p-1 text-app-muted hover:bg-app-hover hover:text-app-text", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }) }), children: mockConnectors.map((c) => /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-app-hover", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "rounded bg-app-badge px-1.5 py-0.5 text-[10px] font-bold uppercase text-app-accent", children: c.label }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 truncate text-app-secondary", children: c.account })
+  ] }, c.id)) });
+}
+function HarnessSection() {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(SidebarSection, { title: "Harness", action: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-md p-1 text-app-muted hover:bg-app-hover hover:text-app-text", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }) }), children: mockHarnesses.map((h) => /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-app-hover", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "rounded bg-app-badge px-1.5 py-0.5 text-[10px] font-bold uppercase text-blue-300", children: h.type }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 flex-1 truncate text-app-secondary", children: h.label }),
+    h.authType && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10px] font-semibold uppercase text-app-muted", children: h.authType })
+  ] }, h.id)) });
+}
+function Sidebar() {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("aside", { className: "flex w-[280px] shrink-0 flex-col border-r border-app-border bg-app-sidebar", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 overflow-y-auto px-3 py-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(AgentsSection, {}),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 space-y-5", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(SchedulesSection, {}),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(ConnectorsSection, {}),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(HarnessSection, {})
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "border-t border-app-border px-3 py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 rounded-lg px-2 py-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-8 w-8 items-center justify-center rounded-lg bg-app-accent text-sm font-bold text-white", children: "A" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-sm font-medium text-app-text", children: "Agent Forge" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-xs text-app-muted", children: "local workspace" })
+      ] })
+    ] }) })
+  ] });
+}
+function ChatHeader() {
+  const agents = useAgentStore((s) => s.agents);
+  const selectedAgentId = useAgentStore((s) => s.selectedAgentId);
+  const selectedSessionId = useSessionStore((s) => s.selectedSessionId);
+  const agent = agents.find((a) => a.id === selectedAgentId);
+  const session = agent?.sessions.find((s) => s.id === selectedSessionId);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-12 shrink-0 items-center justify-between border-b border-app-border bg-app-bg px-5", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 items-center gap-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: agent?.avatar }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-medium text-app-muted", children: agent?.name }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-app-muted", children: "/" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate text-sm font-semibold text-app-text", children: session?.name }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-2 rounded-full bg-app-card px-2 py-0.5 text-xs text-app-muted", children: session?.status ?? "idle" })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-xs text-app-muted", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-2 w-2 rounded-full bg-emerald-400" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Connected" })
+    ] })
+  ] });
+}
+const useMessageStore = create((set, get) => ({
+  messagesBySession: { "session-octopus": mockMessages },
+  getMessages: (sessionId) => {
+    if (!sessionId) return [];
+    return get().messagesBySession[sessionId] ?? [];
+  },
+  appendUserMessage: (sessionId, content) => {
+    const message = {
+      id: `user-${Date.now()}`,
+      type: "user",
+      content,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+    const existing = get().messagesBySession[sessionId] ?? [];
+    set({ messagesBySession: { ...get().messagesBySession, [sessionId]: [...existing, message] } });
+  }
+}));
+function UserMessageBubble({ message }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-end", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-2xl", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-1 text-right text-xs font-medium text-app-muted", children: "You" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-app-accent/40 bg-app-card px-4 py-3 text-sm leading-6 text-app-text shadow-sm", children: message.content })
+  ] }) });
+}
+function AssistantMessageBubble({ message }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-start", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-4xl", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-1 flex items-center gap-2 text-sm font-medium text-app-text", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: message.agentAvatar }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: message.agentName })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-app-border bg-app-panel px-4 py-3 text-sm leading-6 text-app-text", children: message.content })
+  ] }) });
+}
+function ToolInvocationCard({ message }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-app-border bg-app-card overflow-hidden", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 px-4 py-3", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronRight, { size: 15, className: "text-app-muted shrink-0" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Terminal, { size: 15, className: "text-blue-300 shrink-0" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-semibold text-blue-300 shrink-0", children: message.toolName }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("code", { className: "min-w-0 flex-1 truncate font-mono text-sm text-app-secondary", children: message.summary }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "rounded-full bg-app-bg px-2 py-0.5 text-xs text-app-muted shrink-0", children: message.status })
+  ] }) });
+}
+function ToolResultCard({ message }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-app-border bg-app-card overflow-hidden", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start gap-3 px-4 py-3", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronRight, { size: 15, className: "mt-0.5 text-app-muted shrink-0" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "rounded bg-emerald-500/10 px-1.5 py-0.5 text-xs font-bold uppercase text-emerald-400 shrink-0", children: "Result" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("pre", { className: "min-w-0 flex-1 overflow-hidden whitespace-pre-wrap break-words font-mono text-sm leading-6 text-app-secondary", children: message.content })
+  ] }) });
+}
+function StatusDivider({ message }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-full border border-app-border bg-app-card px-3 py-1 text-xs font-semibold uppercase tracking-wide text-app-muted", children: [
+    message.label,
+    message.cost && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "ml-1 normal-case", children: [
+      "· ",
+      message.cost
+    ] })
+  ] }) });
+}
+function ErrorCard({ message }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-red-300", children: message.title }),
+    message.detail && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-1 text-sm text-red-200/80", children: message.detail })
+  ] });
+}
+function MessageList() {
+  const selectedSessionId = useSessionStore((s) => s.selectedSessionId);
+  const getMessages = useMessageStore((s) => s.getMessages);
+  const messages = getMessages(selectedSessionId);
+  const endRef = reactExports.useRef(null);
+  reactExports.useEffect(() => {
+    endRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 overflow-y-auto px-5 py-5", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-auto flex max-w-3xl flex-col gap-3", children: [
+    messages.map((m2) => {
+      if (m2.type === "user") return /* @__PURE__ */ jsxRuntimeExports.jsx(UserMessageBubble, { message: m2 }, m2.id);
+      if (m2.type === "assistant") return /* @__PURE__ */ jsxRuntimeExports.jsx(AssistantMessageBubble, { message: m2 }, m2.id);
+      if (m2.type === "tool_invocation") return /* @__PURE__ */ jsxRuntimeExports.jsx(ToolInvocationCard, { message: m2 }, m2.id);
+      if (m2.type === "tool_result") return /* @__PURE__ */ jsxRuntimeExports.jsx(ToolResultCard, { message: m2 }, m2.id);
+      if (m2.type === "status") return /* @__PURE__ */ jsxRuntimeExports.jsx(StatusDivider, { message: m2 }, m2.id);
+      if (m2.type === "error") return /* @__PURE__ */ jsxRuntimeExports.jsx(ErrorCard, { message: m2 }, m2.id);
+      return null;
+    }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: endRef })
+  ] }) });
+}
+function Composer() {
+  const [value, setValue] = reactExports.useState("");
+  const selectedSessionId = useSessionStore((s) => s.selectedSessionId);
+  const appendUserMessage = useMessageStore((s) => s.appendUserMessage);
+  function send() {
+    const content = value.trim();
+    if (!content || !selectedSessionId) return;
+    appendUserMessage(selectedSessionId, content);
+    setValue("");
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "border-t border-app-border bg-app-bg px-5 py-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-auto max-w-3xl", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-2xl border border-app-border bg-app-panel shadow-lg shadow-black/20 focus-within:border-app-accent/60 transition-colors", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "textarea",
+      {
+        value,
+        onChange: (e) => setValue(e.target.value),
+        onKeyDown: (e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            send();
+          }
+        },
+        placeholder: "Send a message...",
+        className: "min-h-[72px] w-full resize-none bg-transparent px-4 pt-4 pb-1 text-sm leading-6 text-app-text outline-none placeholder:text-app-muted"
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between px-3 pb-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-lg p-2 text-app-muted hover:bg-app-hover hover:text-app-text", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Paperclip, { size: 17 }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: send, disabled: !value.trim(), className: "flex h-9 w-9 items-center justify-center rounded-xl bg-app-accent text-white hover:bg-violet-600 disabled:cursor-not-allowed disabled:opacity-40 transition-colors", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowUp, { size: 17 }) })
+    ] })
+  ] }) }) });
+}
+function EmptyWorkspace() {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "flex min-w-0 flex-1 items-center justify-center bg-app-bg", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-md text-center", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4 text-5xl", children: "🌀" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "text-2xl font-semibold text-app-text", children: "Select a session" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm leading-6 text-app-muted", children: "Choose an agent session from the sidebar, or create a new one to start working with Agent Forge." })
+  ] }) });
+}
+function MainWorkspace() {
+  const selectedSessionId = useSessionStore((s) => s.selectedSessionId);
+  if (!selectedSessionId) return /* @__PURE__ */ jsxRuntimeExports.jsx(EmptyWorkspace, {});
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "flex min-w-0 flex-1 flex-col bg-app-bg", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(ChatHeader, {}),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(MessageList, {}),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Composer, {})
+  ] });
+}
+function DiagnosticsPanel() {
+  const setView = useAppStore((s) => s.setView);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "flex min-w-0 flex-1 flex-col bg-app-bg", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-12 items-center justify-between border-b border-app-border px-5", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-sm font-semibold text-app-text", children: "Diagnostics" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-lg border border-app-border px-3 py-1.5 text-sm text-app-secondary hover:bg-app-hover hover:text-app-text", onClick: () => setView("workspace"), children: "Back to Workspace" })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-5", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-app-border bg-app-panel p-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-app-text", children: "Daemon Status" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2 text-sm text-app-muted", children: "Health: OK · Version: 0.0.9rc1 · Port: 8765" })
+    ] }) })
+  ] });
+}
+function AppShell() {
+  const view = useAppStore((s) => s.view);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "h-screen w-screen overflow-hidden bg-app-bg text-app-text", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(TopBar, {}),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-[calc(100vh-44px)]", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Sidebar, {}),
+      view === "workspace" && /* @__PURE__ */ jsxRuntimeExports.jsx(MainWorkspace, {}),
+      view === "diagnostics" && /* @__PURE__ */ jsxRuntimeExports.jsx(DiagnosticsPanel, {}),
+      view === "settings" && /* @__PURE__ */ jsxRuntimeExports.jsx(DiagnosticsPanel, {}),
+      view === "schedules" && /* @__PURE__ */ jsxRuntimeExports.jsx(Placeholder, { title: "Schedules" }),
+      view === "connectors" && /* @__PURE__ */ jsxRuntimeExports.jsx(Placeholder, { title: "Connectors" })
+    ] })
+  ] });
+}
+function Placeholder({ title }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "flex flex-1 items-center justify-center bg-app-bg", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-app-border bg-app-panel px-6 py-5 text-app-muted", children: [
+    title,
+    " coming soon"
+  ] }) });
+}
+function App() {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(AppShell, {});
+}
 client.createRoot(document.getElementById("root")).render(
-  /* @__PURE__ */ jsxRuntimeExports.jsx(React.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })
+  /* @__PURE__ */ jsxRuntimeExports.jsx(React$2.StrictMode, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })
 );

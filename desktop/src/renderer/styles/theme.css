@@ -1,0 +1,18 @@
+:root {
+  --bg-app: #0b0d12;
+  --bg-topbar: #0f1218;
+  --bg-sidebar: #11151d;
+  --bg-panel: #151a23;
+  --bg-card: #171d27;
+  --bg-hover: #202737;
+  --bg-selected: #263044;
+  --bg-badge: #202b3f;
+  --border-default: #293241;
+  --text-primary: #e8ecf3;
+  --text-secondary: #b2b9c8;
+  --text-muted: #7f8899;
+  --accent: #7c3aed;
+  --success: #22c55e;
+  --warning: #f59e0b;
+  --danger: #ef4444;
+}
