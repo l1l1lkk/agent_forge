@@ -7,11 +7,10 @@
 import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { registerIpcHandlers } from './ipc'
-import { DaemonManager } from './daemonManager'
+import { daemon } from './daemonSingleton'
 import { getLocalConfig } from './configStore'
 
 let mainWindow: BrowserWindow | null = null
-const daemon = new DaemonManager()
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({

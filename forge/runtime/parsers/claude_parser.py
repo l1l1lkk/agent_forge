@@ -30,28 +30,25 @@ class ClaudeParser:
         self._seq += 1
         return self._seq
 
-    def parse_line(self, line: str) -> Optional[Event]:
+    def parse_line(self, line: str) -> list[Event]:
         """Parse one JSON line from Claude's stream-json output.
 
-        Args:
-            line: A single line of JSON from claude stdout.
-
-        Returns:
-            An Event object, or None if the line should be skipped.
+        Returns a list of Events (may be empty if line is skipped).
+        For assistant messages with multiple content blocks, returns multiple events.
         """
         line = line.strip()
         if not line:
-            return None
+            return []
 
         try:
             data = json.loads(line)
         except json.JSONDecodeError:
-            return None
+            return []
 
         event_type = data.get("type", "")
         return self._dispatch(event_type, data)
 
-    def _dispatch(self, event_type: str, data: dict[str, Any]) -> Optional[Event]:
+    def _dispatch(self, event_type: str, data: dict[str, Any]) -> list[Event]:
         """Dispatch to the appropriate handler based on Claude event type."""
         if event_type == "system":
             return self._handle_system(data)
@@ -62,36 +59,17 @@ class ClaudeParser:
         elif event_type == "result":
             return self._handle_result(data)
         else:
-            # Unknown event type — still emit as generic event
-            return Event(
-                type=event_type,
-                seq=self._next_seq(),
-                session_id=self.session_id,
-                payload={"raw": data},
-            )
+            return [Event(type=event_type, seq=self._next_seq(), session_id=self.session_id, payload={"raw": data})]
 
-    def _handle_system(self, data: dict[str, Any]) -> Optional[Event]:
-        """Handle system events (init, etc.)."""
+    def _handle_system(self, data: dict[str, Any]) -> list[Event]:
         subtype = data.get("subtype", "")
         if subtype == "init":
-            return Event(
-                type="session_started",
-                seq=self._next_seq(),
-                session_id=self.session_id,
-                payload={
-                    "session_id": data.get("session_id", ""),
-                    "model": data.get("model", ""),
-                    "cwd": data.get("cwd", ""),
-                },
-            )
-        return Event(
-            type="session_status",
-            seq=self._next_seq(),
-            session_id=self.session_id,
-            payload={"subtype": subtype, "data": data},
-        )
+            return [Event(type="session_started", seq=self._next_seq(), session_id=self.session_id,
+                payload={"session_id": data.get("session_id", ""), "model": data.get("model", ""), "cwd": data.get("cwd", "")})]
+        return [Event(type="session_status", seq=self._next_seq(), session_id=self.session_id,
+            payload={"subtype": subtype, "data": data})]
 
-    def _handle_assistant(self, data: dict[str, Any]) -> Optional[Event]:
+    def _handle_assistant(self, data: dict[str, Any]) -> list[Event]:
         """Handle assistant message events.
 
         An assistant message may contain:
@@ -162,65 +140,29 @@ class ClaudeParser:
             },
         ))
 
-        # Return the first event if only one, otherwise the last (primary)
-        # Actually, we should emit ALL events. The caller should iterate.
-        # For now, we return the primary event. Multi-event handling is for Step 2.
-        return events[-1] if events else None
+        return events
 
-    def _handle_user(self, data: dict[str, Any]) -> Optional[Event]:
-        """Handle user message events (e.g., tool results sent back to Claude)."""
+    def _handle_user(self, data: dict[str, Any]) -> list[Event]:
         message = data.get("message", {})
         content = message.get("content", [])
-
+        events = []
         for block in content:
             if block.get("type") == "tool_result":
-                return Event(
-                    type="tool_result",
-                    seq=self._next_seq(),
-                    session_id=self.session_id,
-                    payload={
-                        "tool_use_id": block.get("tool_use_id", ""),
-                        "content": str(block.get("content", ""))[:500],
-                        "is_error": block.get("is_error", False),
-                    },
-                )
+                events.append(Event(type="tool_result", seq=self._next_seq(), session_id=self.session_id,
+                    payload={"tool_use_id": block.get("tool_use_id", ""), "content": str(block.get("content", ""))[:500], "is_error": block.get("is_error", False)}))
+        if not events:
+            events.append(Event(type="user_message", seq=self._next_seq(), session_id=self.session_id, payload={"raw": data}))
+        return events
 
-        return Event(
-            type="user_message",
-            seq=self._next_seq(),
-            session_id=self.session_id,
-            payload={"raw": data},
-        )
-
-    def _handle_result(self, data: dict[str, Any]) -> Optional[Event]:
-        """Handle final result events."""
+    def _handle_result(self, data: dict[str, Any]) -> list[Event]:
         subtype = data.get("subtype", "")
         if subtype == "success":
-            return Event(
-                type="session_status",
-                seq=self._next_seq(),
-                session_id=self.session_id,
-                payload={
-                    "status": "completed",
-                    "result": data.get("result", ""),
-                    "usage": data.get("usage", {}),
-                },
-            )
+            return [Event(type="session_status", seq=self._next_seq(), session_id=self.session_id,
+                payload={"status": "completed", "result": data.get("result", ""), "usage": data.get("usage", {})})]
         elif subtype == "error":
-            return Event(
-                type="error",
-                seq=self._next_seq(),
-                session_id=self.session_id,
-                payload={
-                    "error": data.get("errors", str(data)),
-                },
-            )
-        return Event(
-            type="session_status",
-            seq=self._next_seq(),
-            session_id=self.session_id,
-            payload={"subtype": subtype},
-        )
+            return [Event(type="error", seq=self._next_seq(), session_id=self.session_id,
+                payload={"error": data.get("errors", str(data))})]
+        return [Event(type="session_status", seq=self._next_seq(), session_id=self.session_id, payload={"subtype": subtype})]
 
     def parse_lines(self, lines: list[str]) -> list[Event]:
         """Parse multiple lines of JSONL output.

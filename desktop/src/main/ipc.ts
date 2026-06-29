@@ -5,11 +5,9 @@
  */
 
 import { ipcMain, dialog, shell, BrowserWindow } from 'electron'
-import { DaemonManager } from './daemonManager'
+import { daemon } from './daemonSingleton'
 import { getConfig, setConfig, getLocalConfig, getUiConfig } from './configStore'
 import http from 'http'
-
-const daemon = new DaemonManager()
 
 export function registerIpcHandlers(): void {
   const { host, port } = daemon.getInfo()

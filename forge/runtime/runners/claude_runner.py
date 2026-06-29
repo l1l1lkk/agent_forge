@@ -108,9 +108,9 @@ class ClaudeRunner(BaseRunner):
                 if not line_str:
                     continue
 
-                # Parse into Event
-                event = parser.parse_line(line_str)
-                if event is not None:
+                # Parse into Events (now returns list)
+                events = parser.parse_line(line_str)
+                for event in events:
                     # Emit via event sink
                     try:
                         await event_sink(event)

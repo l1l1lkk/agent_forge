@@ -147,6 +147,7 @@ class DaemonManager {
     return false;
   }
 }
+const daemon = new DaemonManager();
 const defaults = {
   mode: "local",
   local: {
@@ -173,26 +174,25 @@ function setConfig(partial) {
 function getLocalConfig() {
   return configStore.get("local");
 }
-const daemon$1 = new DaemonManager();
 function registerIpcHandlers() {
-  const { host, port } = daemon$1.getInfo();
+  const { host, port } = daemon.getInfo();
   ipcMain.handle("daemon:health", async () => {
-    return daemon$1.isHealthy();
+    return daemon.isHealthy();
   });
   ipcMain.handle("daemon:start", async () => {
-    return daemon$1.start();
+    return daemon.start();
   });
   ipcMain.handle("daemon:stop", async () => {
-    await daemon$1.stop();
+    await daemon.stop();
   });
   ipcMain.handle("daemon:restart", async () => {
-    return daemon$1.restart();
+    return daemon.restart();
   });
   ipcMain.handle("daemon:logs", async () => {
-    return daemon$1.getLogs();
+    return daemon.getLogs();
   });
   ipcMain.handle("daemon:info", async () => {
-    return daemon$1.getInfo();
+    return daemon.getInfo();
   });
   ipcMain.handle("api:get", async (_event, apiPath) => {
     return _httpGet(`http://${host}:${port}${apiPath}`);
@@ -263,7 +263,6 @@ function _httpPost(url, body) {
   });
 }
 let mainWindow = null;
-const daemon = new DaemonManager();
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1400,

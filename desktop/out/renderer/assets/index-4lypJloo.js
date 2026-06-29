@@ -6992,9 +6992,9 @@ const createStoreImpl = (createState) => {
     }
     listeners.clear();
   };
-  const api = { setState, getState, getInitialState, subscribe, destroy };
-  const initialState = state = createState(setState, getState, api);
-  return api;
+  const api2 = { setState, getState, getInitialState, subscribe, destroy };
+  const initialState = state = createState(setState, getState, api2);
+  return api2;
 };
 const createStore = (createState) => createState ? createStoreImpl(createState) : createStoreImpl;
 var withSelector = { exports: {} };
@@ -7131,7 +7131,7 @@ const { useDebugValue } = React$2;
 const { useSyncExternalStoreWithSelector } = useSyncExternalStoreExports;
 let didWarnAboutEqualityFn = false;
 const identity = (arg) => arg;
-function useStore(api, selector = identity, equalityFn) {
+function useStore(api2, selector = identity, equalityFn) {
   if ((__vite_import_meta_env__ ? "production" : void 0) !== "production" && equalityFn && !didWarnAboutEqualityFn) {
     console.warn(
       "[DEPRECATED] Use `createWithEqualityFn` instead of `create` or use `useStoreWithEqualityFn` instead of `useStore`. They can be imported from 'zustand/traditional'. https://github.com/pmndrs/zustand/discussions/1937"
@@ -7139,9 +7139,9 @@ function useStore(api, selector = identity, equalityFn) {
     didWarnAboutEqualityFn = true;
   }
   const slice = useSyncExternalStoreWithSelector(
-    api.subscribe,
-    api.getState,
-    api.getServerState || api.getInitialState,
+    api2.subscribe,
+    api2.getState,
+    api2.getServerState || api2.getInitialState,
     selector,
     equalityFn
   );
@@ -7154,9 +7154,9 @@ const createImpl = (createState) => {
       "[DEPRECATED] Passing a vanilla store will be unsupported in a future version. Instead use `import { useStore } from 'zustand'`."
     );
   }
-  const api = typeof createState === "function" ? createStore(createState) : createState;
-  const useBoundStore = (selector, equalityFn) => useStore(api, selector, equalityFn);
-  Object.assign(useBoundStore, api);
+  const api2 = typeof createState === "function" ? createStore(createState) : createState;
+  const useBoundStore = (selector, equalityFn) => useStore(api2, selector, equalityFn);
+  Object.assign(useBoundStore, api2);
   return useBoundStore;
 };
 const create = (createState) => createState ? createImpl(createState) : createImpl;
@@ -7203,19 +7203,159 @@ const mockMessages = [
   { id: "m6", type: "assistant", agentName: "Octo", agentAvatar: "🐙", content: "Pushed `ab58a28`. Two fixes in one commit: delegation single-turn contract and KaTeX math rendering in chat messages.", createdAt: (/* @__PURE__ */ new Date()).toISOString() },
   { id: "m7", type: "status", label: "DONE", cost: "$0.2048", createdAt: (/* @__PURE__ */ new Date()).toISOString() }
 ];
+function api() {
+  if (window.forgeDesktop?.api) return window.forgeDesktop.api;
+  return {
+    get: async (path) => fetch(`http://127.0.0.1:8765${path}`).then((r2) => r2.json()),
+    post: async (path, body) => fetch(`http://127.0.0.1:8765${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r2) => r2.json())
+  };
+}
+async function fetchAgents() {
+  const data = await api().get("/api/agents");
+  return (data.agents || []).map((a) => ({
+    id: a.id,
+    name: a.name,
+    avatar: _avatar(a.name),
+    sessions: []
+  }));
+}
+async function fetchSessions() {
+  const data = await api().get("/api/sessions");
+  return (data.sessions || []).map((s) => ({
+    id: s.id,
+    agentId: s.agent_id,
+    name: s.title || s.id.slice(-8),
+    status: s.status || "idle"
+  }));
+}
+async function fetchMessages(sessionId) {
+  const data = await api().get(`/api/sessions/${sessionId}/messages`);
+  return (data.messages || []).map((m2) => ({
+    id: m2.id,
+    type: m2.role === "user" ? "user" : "assistant",
+    content: m2.content || "",
+    createdAt: m2.created_at,
+    agentName: "",
+    agentAvatar: ""
+  }));
+}
+async function sendMessage(sessionId, content) {
+  await api().post(`/api/sessions/${sessionId}/messages`, { role: "user", content, run: true });
+}
+function _avatar(name) {
+  const map = { coding: "💻", claude: "🧠", review: "🔬", default: "🤖" };
+  return map[name] || map["default"];
+}
 const useAgentStore = create((set, get) => ({
   agents: mockAgents,
-  expandedAgentIds: ["agent-octo", "agent-vera", "agent-charlie", "agent-weber"],
-  selectedAgentId: "agent-octo",
+  expandedAgentIds: mockAgents.map((a) => a.id),
+  selectedAgentId: null,
+  loading: false,
+  loadAgents: async () => {
+    set({ loading: true });
+    try {
+      const agents = await fetchAgents();
+      const sessions = await fetchSessions();
+      const merged = agents.map((a) => ({
+        ...a,
+        sessions: sessions.filter((s) => s.agentId === a.id)
+      }));
+      set({
+        agents: merged.length > 0 ? merged : mockAgents,
+        expandedAgentIds: merged.length > 0 ? merged.map((a) => a.id) : get().expandedAgentIds,
+        selectedAgentId: get().selectedAgentId || (merged[0]?.id ?? null)
+      });
+    } catch {
+    } finally {
+      set({ loading: false });
+    }
+  },
   toggleAgent: (agentId) => {
-    const current = get().expandedAgentIds;
-    set({ expandedAgentIds: current.includes(agentId) ? current.filter((id2) => id2 !== agentId) : [...current, agentId] });
+    const cur = get().expandedAgentIds;
+    set({ expandedAgentIds: cur.includes(agentId) ? cur.filter((id2) => id2 !== agentId) : [...cur, agentId] });
   },
   selectAgent: (selectedAgentId) => set({ selectedAgentId })
 }));
-const useSessionStore = create((set) => ({
-  selectedSessionId: "session-octopus",
-  selectSession: (selectedSessionId) => set({ selectedSessionId })
+let ws = null;
+let currentSessionId = null;
+let handler = null;
+function connectWS(sessionId, onMessage) {
+  if (currentSessionId === sessionId && ws?.readyState === WebSocket.OPEN) return;
+  disconnectWS();
+  currentSessionId = sessionId;
+  handler = onMessage;
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const url = `${proto}//127.0.0.1:8765/ws`;
+  ws = new WebSocket(url);
+  ws.onopen = () => {
+    ws?.send(JSON.stringify({ type: "subscribe_session", session_id: sessionId, after_seq: 0 }));
+  };
+  ws.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      if (data.type === "event") {
+        const msg = adaptEvent(data.event);
+        if (msg) handler?.(msg);
+      }
+    } catch {
+    }
+  };
+  ws.onerror = () => {
+  };
+  ws.onclose = () => {
+  };
+}
+function disconnectWS() {
+  if (ws) {
+    ws.close();
+    ws = null;
+  }
+  currentSessionId = null;
+  handler = null;
+}
+const useMessageStore = create((set, get) => ({
+  messagesBySession: { "session-octopus": mockMessages },
+  getMessages: (sessionId) => {
+    if (!sessionId) return [];
+    return get().messagesBySession[sessionId] ?? [];
+  },
+  setMessages: (sessionId, messages) => {
+    set({ messagesBySession: { ...get().messagesBySession, [sessionId]: messages } });
+  },
+  appendUserMessage: async (sessionId, content) => {
+    const userMsg = { id: `user-${Date.now()}`, type: "user", content, createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+    const existing = get().messagesBySession[sessionId] ?? [];
+    set({ messagesBySession: { ...get().messagesBySession, [sessionId]: [...existing, userMsg] } });
+    try {
+      await sendMessage(sessionId, content);
+    } catch (e) {
+      console.error("Send failed:", e);
+      const errMsg = { id: `err-${Date.now()}`, type: "error", title: "Send failed", detail: String(e), createdAt: (/* @__PURE__ */ new Date()).toISOString() };
+      set({ messagesBySession: { ...get().messagesBySession, [sessionId]: [...get().messagesBySession[sessionId] ?? [], errMsg] } });
+    }
+  },
+  appendMessage: (sessionId, msg) => {
+    const existing = get().messagesBySession[sessionId] ?? [];
+    set({ messagesBySession: { ...get().messagesBySession, [sessionId]: [...existing, msg] } });
+  }
+}));
+const useSessionStore = create((set, get) => ({
+  selectedSessionId: null,
+  selectSession: async (sessionId) => {
+    const prev = get().selectedSessionId;
+    set({ selectedSessionId: sessionId });
+    if (prev) disconnectWS();
+    try {
+      const messages = await fetchMessages(sessionId);
+      if (messages.length > 0) {
+        useMessageStore.getState().setMessages(sessionId, messages);
+      }
+    } catch {
+    }
+    connectWS(sessionId, (msg) => {
+      useMessageStore.getState().appendMessage(sessionId, msg);
+    });
+  }
 }));
 /**
  * @license lucide-react v0.441.0 - ISC
@@ -7544,23 +7684,6 @@ function ChatHeader() {
     ] })
   ] });
 }
-const useMessageStore = create((set, get) => ({
-  messagesBySession: { "session-octopus": mockMessages },
-  getMessages: (sessionId) => {
-    if (!sessionId) return [];
-    return get().messagesBySession[sessionId] ?? [];
-  },
-  appendUserMessage: (sessionId, content) => {
-    const message = {
-      id: `user-${Date.now()}`,
-      type: "user",
-      content,
-      createdAt: (/* @__PURE__ */ new Date()).toISOString()
-    };
-    const existing = get().messagesBySession[sessionId] ?? [];
-    set({ messagesBySession: { ...get().messagesBySession, [sessionId]: [...existing, message] } });
-  }
-}));
 function UserMessageBubble({ message }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-end", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-w-2xl", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-1 text-right text-xs font-medium text-app-muted", children: "You" }),
@@ -7710,6 +7833,12 @@ function Placeholder({ title }) {
   ] }) });
 }
 function App() {
+  const loadAgents = useAgentStore((s) => s.loadAgents);
+  reactExports.useEffect(() => {
+    loadAgents();
+    const interval = setInterval(loadAgents, 15e3);
+    return () => clearInterval(interval);
+  }, []);
   return /* @__PURE__ */ jsxRuntimeExports.jsx(AppShell, {});
 }
 client.createRoot(document.getElementById("root")).render(
