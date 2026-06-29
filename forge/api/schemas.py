@@ -129,6 +129,15 @@ class SessionListResponse(BaseModel):
 class MessageCreate(BaseModel):
     role: str = Field(..., description="Message role: user, assistant, system, tool")
     content: str = Field(..., description="Message content")
+    run: bool = Field(False, description="If true, trigger an AI turn after adding the message")
+
+
+class TurnResult(BaseModel):
+    """Result of running an AI turn."""
+    success: bool
+    messages: list[dict] = []
+    error: Optional[str] = None
+    session_status: str = "idle"
 
 
 class MessageResponse(BaseModel):

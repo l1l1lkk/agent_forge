@@ -174,6 +174,27 @@ class APIClient:
             r.raise_for_status()
             return r.json()
 
+    def run_turn(self, session_id: str, prompt: str) -> dict:
+        """Send a user message and trigger an AI turn. Returns the user message."""
+        with httpx.Client(timeout=300.0) as client:
+            r = client.post(
+                self._url(f"/api/sessions/{session_id}/messages"),
+                json={"role": "user", "content": prompt, "run": True},
+                headers=self._headers(),
+            )
+            r.raise_for_status()
+            return r.json()
+
+    def interrupt_session(self, session_id: str) -> dict:
+        """Interrupt a running session."""
+        with httpx.Client() as client:
+            r = client.post(
+                self._url(f"/api/sessions/{session_id}/interrupt"),
+                headers=self._headers(),
+            )
+            r.raise_for_status()
+            return r.json()
+
     def delete_session(self, session_id: str) -> None:
         with httpx.Client() as client:
             r = client.delete(

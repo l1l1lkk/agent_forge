@@ -1,8 +1,10 @@
-"""Session API routes — CRUD for sessions and messages."""
+"""Session API routes — CRUD for sessions and messages, plus AI turn execution."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+import asyncio
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from forge.api.deps import get_db
@@ -14,6 +16,7 @@ from forge.api.schemas import (
     SessionCreate,
     SessionListResponse,
     SessionResponse,
+    TurnResult,
 )
 from forge.core.errors import NotFoundError, ConflictError
 from forge.services.session_manager import SessionManager
@@ -82,7 +85,6 @@ async def get_messages(session_id: str, db: AsyncSession = Depends(get_db)):
     """Get all messages for a session."""
     mgr = SessionManager(db)
     try:
-        # Verify session exists
         await mgr.get_session(session_id)
         messages = await mgr.get_messages(session_id)
         return MessageListResponse(
@@ -104,9 +106,22 @@ async def add_message(
     body: MessageCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    """Add a message to a session."""
+    """Add a message to a session. Set run=true to trigger an AI turn."""
     mgr = SessionManager(db)
     try:
+        if body.run and body.role == "user":
+            # Run a full AI turn — this adds the user message and runs the agent
+            result = await mgr.run_turn(
+                session_id=session_id,
+                user_prompt=body.content,
+            )
+            # Return a placeholder message response with the user message
+            messages = await mgr.get_messages(session_id)
+            if messages:
+                last_user = [m for m in messages if m.role == "user"][-1]
+                return MessageResponse.model_validate(last_user)
+
+        # Just add the message without running
         message = await mgr.add_message(
             session_id=session_id,
             role=body.role,
@@ -115,8 +130,29 @@ async def add_message(
         return MessageResponse.model_validate(message)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail={"code": e.code, "message": e.message})
+    except ConflictError as e:
+        raise HTTPException(status_code=409, detail={"code": e.code, "message": e.message})
     except ValueError as e:
         raise HTTPException(status_code=400, detail={"code": "VALIDATION", "message": str(e)})
+
+
+@router.post(
+    "/{session_id}/interrupt",
+    response_model=SessionResponse,
+    responses={404: {"model": ErrorResponse}},
+)
+async def interrupt_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """Interrupt a running session."""
+    mgr = SessionManager(db)
+    try:
+        await mgr.interrupt_session(session_id)
+        session = await mgr.get_session(session_id)
+        return SessionResponse.model_validate(session)
+    except NotFoundError as e:
+        raise HTTPException(status_code=404, detail={"code": e.code, "message": e.message})
 
 
 @router.delete(

@@ -1,23 +1,31 @@
 """Session management service.
 
 Orchestrates session and message lifecycle — the core of forge-agent.
+Now includes runner integration to execute AI turns.
 """
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from typing import Optional, Sequence
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from forge.core.errors import NotFoundError, ConflictError
+from forge.core.event_bus import event_bus
+from forge.core.events import Event
 from forge.core.ids import gen_id
-from forge.db.models import SessionModel, MessageModel
+from forge.db.models import SessionModel, MessageModel, EventModel
 from forge.db.repositories.session_repo import SessionRepo
 from forge.db.repositories.message_repo import MessageRepo
+from forge.db.repositories.event_repo import EventRepo
+from forge.runtime.runners.base import BaseRunner, RunnerResult
+from forge.runtime.runners.registry import registry
 from forge.services.agent_manager import AgentManager
 from forge.services.project_manager import ProjectManager
 
+logger = logging.getLogger(__name__)
 
 # Valid session states
 VALID_STATUSES: set[str] = {
@@ -29,12 +37,15 @@ VALID_ROLES: set[str] = {"user", "assistant", "system", "tool"}
 
 
 class SessionManager:
-    """Manages session and message lifecycle."""
+    """Manages session and message lifecycle, including AI turn execution."""
 
     def __init__(self, db: AsyncSession):
         self.db = db
         self.session_repo = SessionRepo(db)
         self.message_repo = MessageRepo(db)
+        self.event_repo = EventRepo(db)
+
+    # ── Session CRUD ────────────────────────────────────────────
 
     async def create_session(
         self,
@@ -43,20 +54,7 @@ class SessionManager:
         title: Optional[str] = None,
         cwd: Optional[str] = None,
     ) -> SessionModel:
-        """Create a new session.
-
-        Args:
-            project_identifier: Project ID or name.
-            agent_identifier: Agent ID or name.
-            title: Optional session title.
-            cwd: Optional working directory override.
-
-        Returns:
-            The created SessionModel.
-
-        Raises:
-            NotFoundError: If the project or agent doesn't exist.
-        """
+        """Create a new session."""
         project_mgr = ProjectManager(self.db)
         agent_mgr = AgentManager(self.db)
 
@@ -84,21 +82,36 @@ class SessionManager:
         return items
 
     async def get_session(self, session_id: str) -> SessionModel:
-        """Get a session with its messages loaded.
-
-        Args:
-            session_id: Session ID (ses_xxx).
-
-        Returns:
-            The SessionModel with messages eager-loaded.
-
-        Raises:
-            NotFoundError: If the session doesn't exist.
-        """
+        """Get a session with its messages loaded."""
         session = await self.session_repo.get_by_id(session_id, load_relations=True)
         if session is None:
             raise NotFoundError("Session", session_id)
         return session
+
+    async def update_status(self, session_id: str, status: str) -> SessionModel:
+        """Update a session's status."""
+        if status not in VALID_STATUSES:
+            raise ValueError(
+                f"Invalid status: {status!r}. Must be one of {VALID_STATUSES}"
+            )
+        session = await self.session_repo.get_by_id(session_id, load_relations=False)
+        if session is None:
+            raise NotFoundError("Session", session_id)
+        session.status = status
+        session.updated_at = _utc_iso()
+        return await self.session_repo.update(session)
+
+    async def rename_session(self, session_id: str, title: str) -> SessionModel:
+        """Rename a session."""
+        session = await self.get_session(session_id)
+        return await self.session_repo.update(session, title=title)
+
+    async def delete_session(self, session_id: str) -> None:
+        """Delete a session and all its messages/events."""
+        session = await self.get_session(session_id)
+        await self.session_repo.delete(session)
+
+    # ── Messages ─────────────────────────────────────────────────
 
     async def add_message(
         self,
@@ -106,24 +119,10 @@ class SessionManager:
         role: str,
         content: str,
     ) -> MessageModel:
-        """Add a message to a session.
-
-        Args:
-            session_id: Session ID.
-            role: Message role (user, assistant, system, tool).
-            content: Message content.
-
-        Returns:
-            The created MessageModel.
-
-        Raises:
-            NotFoundError: If the session doesn't exist.
-            ValidationError: If the role is invalid.
-        """
+        """Add a message to a session."""
         if role not in VALID_ROLES:
             raise ValueError(f"Invalid role: {role!r}. Must be one of {VALID_ROLES}")
 
-        # Verify session exists
         session = await self.session_repo.get_by_id(
             session_id, load_relations=False
         )
@@ -141,65 +140,148 @@ class SessionManager:
         )
         return await self.message_repo.create(message)
 
-    async def get_messages(
-        self, session_id: str
-    ) -> Sequence[MessageModel]:
-        """Get all messages for a session, ordered by sequence.
-
-        Args:
-            session_id: Session ID.
-
-        Returns:
-            List of MessageModel ordered by seq.
-        """
+    async def get_messages(self, session_id: str) -> Sequence[MessageModel]:
+        """Get all messages for a session, ordered by sequence."""
         items, _ = await self.message_repo.list_by_session(session_id)
         return items
 
-    async def update_status(self, session_id: str, status: str) -> SessionModel:
-        """Update a session's status.
+    # ── Turn Execution ───────────────────────────────────────────
+
+    async def run_turn(
+        self,
+        session_id: str,
+        user_prompt: str,
+    ) -> RunnerResult:
+        """Execute one AI turn for a session.
+
+        1. Validate session state (must be idle)
+        2. Add user message to DB
+        3. Set status to "running"
+        4. Get runner and execute
+        5. Save events and assistant response to DB
+        6. Return to "idle" or "error"
 
         Args:
             session_id: Session ID.
-            status: New status (must be one of VALID_STATUSES).
+            user_prompt: The user's input.
 
         Returns:
-            The updated SessionModel.
+            RunnerResult with success/failure and collected messages.
 
         Raises:
-            NotFoundError: If the session doesn't exist.
-            ValueError: If the status is invalid.
+            NotFoundError: If session/project/agent not found.
+            ConflictError: If session is already running.
         """
-        if status not in VALID_STATUSES:
-            raise ValueError(
-                f"Invalid status: {status!r}. Must be one of {VALID_STATUSES}"
+        # Load session with relations
+        session = await self.session_repo.get_by_id(session_id, load_relations=True)
+        if session is None:
+            raise NotFoundError("Session", session_id)
+
+        if session.status == "running":
+            raise ConflictError(f"Session {session_id} is already running")
+
+        # Load project and agent
+        project_mgr = ProjectManager(self.db)
+        agent_mgr = AgentManager(self.db)
+        project = await project_mgr.get_project(session.project_id)
+        agent = await agent_mgr.get_agent(session.agent_id)
+
+        # Get the runner
+        runner = registry.get(agent.runner)
+        if runner is None:
+            runner = registry.get("claude")  # fallback
+        if runner is None:
+            raise RuntimeError(f"No runner available for: {agent.runner}")
+
+        # Add user message to DB
+        user_msg = await self.add_message(session_id, "user", user_prompt)
+
+        # Set status to running
+        await self.update_status(session_id, "running")
+
+        # Build history (exclude the just-added user message — runner gets raw history)
+        history_items, _ = await self.message_repo.list_by_session(session_id)
+        # Remove the last message (just added user message) from history
+        # since we pass it separately as prompt
+        history = [m for m in history_items if m.id != user_msg.id]
+
+        # Event sink: persist events to DB and broadcast via EventBus
+        async def event_sink(event: Event):
+            # Persist to DB
+            try:
+                db_event = EventModel(
+                    id=event.id,
+                    session_id=event.session_id,
+                    task_id=event.task_id,
+                    type=event.type,
+                    seq=event.seq,
+                    payload_json=event.payload if isinstance(event.payload, str)
+                    else __import__("json").dumps(event.payload),
+                    created_at=event.created_at.isoformat(),
+                )
+                await self.event_repo.create(db_event)
+            except Exception as e:
+                logger.warning("Failed to persist event: %s", e)
+
+            # Broadcast to subscribers
+            try:
+                await event_bus.publish(event)
+            except Exception as e:
+                logger.warning("Failed to broadcast event: %s", e)
+
+        # Execute the turn
+        try:
+            result = await runner.run_turn(
+                session=session,
+                agent=agent,
+                project=project,
+                prompt=user_prompt,
+                history=history,
+                event_sink=event_sink,
             )
 
-        session = await self.get_session(session_id)
-        session.status = status
-        session.updated_at = _utc_iso()
-        return await self.session_repo.update(session)
+            # Save assistant messages from result
+            for msg_data in result.messages:
+                try:
+                    await self.add_message(
+                        session_id,
+                        msg_data.get("role", "assistant"),
+                        msg_data.get("content", ""),
+                    )
+                except Exception as e:
+                    logger.warning("Failed to save assistant message: %s", e)
 
-    async def rename_session(self, session_id: str, title: str) -> SessionModel:
-        """Rename a session.
+            # Update session status
+            if result.success:
+                await self.update_status(session_id, "idle")
+            else:
+                await self.update_status(session_id, "error")
+
+            return result
+
+        except Exception as e:
+            logger.exception("Turn execution failed: %s", e)
+            await self.update_status(session_id, "error")
+            return RunnerResult(success=False, error=str(e))
+
+    async def interrupt_session(self, session_id: str) -> None:
+        """Interrupt a running session's turn.
 
         Args:
             session_id: Session ID.
-            title: New title.
-
-        Returns:
-            The updated SessionModel.
         """
-        session = await self.get_session(session_id)
-        return await self.session_repo.update(session, title=title)
+        session = await self.session_repo.get_by_id(session_id, load_relations=True)
+        if session is None:
+            raise NotFoundError("Session", session_id)
 
-    async def delete_session(self, session_id: str) -> None:
-        """Delete a session and all its messages/events.
+        if session.status != "running":
+            return  # Nothing to interrupt
 
-        Args:
-            session_id: Session ID.
-        """
-        session = await self.get_session(session_id)
-        await self.session_repo.delete(session)
+        runner = registry.get(session.runner)
+        if runner:
+            await runner.interrupt(session_id)
+
+        await self.update_status(session_id, "interrupted")
 
 
 def _utc_iso() -> str:
