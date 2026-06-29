@@ -57,7 +57,7 @@ class ProjectListResponse(BaseModel):
 
 class AgentCreate(BaseModel):
     name: str = Field(..., description="Unique agent name")
-    runner: str = Field(..., description="Runner type: codex, claude, openai-compatible, etc.")
+    runner: str = Field(..., description="Runner type: claude, codex, openai-compatible, etc.")
     model: Optional[str] = Field(None, description="Model identifier")
     system_prompt: Optional[str] = Field(None, description="System prompt")
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0)

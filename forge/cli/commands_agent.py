@@ -18,7 +18,7 @@ console = Console()
 @agent_app.command("create")
 def create(
     name: str = typer.Argument(..., help="Unique agent name"),
-    runner: str = typer.Option(..., "--runner", "-r", help="Runner type: codex, claude, openai-compatible, etc."),
+    runner: str = typer.Option(..., "--runner", "-r", help="Runner type: claude, codex, openai-compatible, etc."),
     model: Optional[str] = typer.Option(None, "--model", "-m", help="Model identifier"),
     system_prompt: Optional[str] = typer.Option(None, "--system-prompt", "-s", help="System prompt"),
     temperature: Optional[float] = typer.Option(None, "--temperature", "-t", help="Sampling temperature (0.0-2.0)"),

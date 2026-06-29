@@ -37,7 +37,7 @@ class AgentManager:
 
         Args:
             name: Unique agent name.
-            runner: Runner type (codex, claude, openai-compatible, etc.)
+            runner: Runner type (claude, codex, openai-compatible, etc.)
             model: Model identifier.
             system_prompt: System prompt for the agent.
             temperature: Sampling temperature.

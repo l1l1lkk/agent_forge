@@ -88,7 +88,7 @@ class SessionModel(Base):
     )
     title: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="idle")
-    runner: Mapped[str] = mapped_column(String(64), nullable=False, default="codex")
+    runner: Mapped[str] = mapped_column(String(64), nullable=False, default="claude")
     external_session_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     cwd: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     metadata_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

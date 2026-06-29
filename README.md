@@ -9,7 +9,7 @@ forge-agent is not a chatbot or a chat UI. It's a developer workbench built arou
 - **Sessions & messages** — persistent, queryable conversation history
 - **Daemon architecture** — long-running background service, not tied to a terminal
 - **CLI-first** — all functionality available via `forge` commands
-- **Runner pluggable** — Codex, Claude, local models (coming in future milestones)
+- **Runner pluggable** — Claude, Claude, local models (coming in future milestones)
 
 ## Installation
 
@@ -52,7 +52,7 @@ forge project list
 
 ```bash
 forge agent create coding \
-  --runner codex \
+  --runner claude \
   --model gpt-5.5 \
   --system-prompt "You are a senior Python engineer."
 
@@ -90,7 +90,7 @@ forge serve --host 0.0.0.0 --port 9000
 ```bash
 forge project add <path>                   # Add a project
 forge project add <path> --name <name>     # Add with custom name
-forge project add <path> --runner codex    # Set default runner
+forge project add <path> --runner claude    # Set default runner
 forge project list                         # List all projects
 forge project show <name-or-id>            # Show project details
 forge project remove <name-or-id>          # Delete project
@@ -102,7 +102,7 @@ forge project env <name> --set KEY=VALUE   # Set env vars
 
 ```bash
 forge agent create <name> --runner <runner>
-forge agent create <name> --runner codex --model gpt-5.5
+forge agent create <name> --runner claude --model gpt-5.5
 forge agent list
 forge agent show <name-or-id>
 forge agent edit <name-or-id> --model claude-sonnet-4-6
@@ -202,7 +202,7 @@ pytest --cov=forge --cov-report=term
 | M0: Project Init | Done |
 | M1: Project & Agent CRUD | Done |
 | M2: Session & Message Persistence | Done |
-| M3: CodexRunner | Planned |
+| M3: ClaudeRunner | Planned |
 | M4: WebSocket Events | Planned |
 | M5: Web UI MVP | Planned |
 | M6: Background Tasks | Planned |
