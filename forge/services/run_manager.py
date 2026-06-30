@@ -4,15 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime, timezone
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from forge.core.errors import NotFoundError, ConflictError
-from forge.core.ids import gen_id
+from forge.core.errors import ConflictError
 from forge.core.event_bus import event_bus
 from forge.core.events import Event
-from forge.db.models import EventModel
+from forge.db.base import async_session_factory
 from forge.db.repositories.event_repo import EventRepo
 from forge.services.session_manager import SessionManager
 
@@ -22,39 +18,41 @@ _running: dict[str, asyncio.Task] = {}
 
 
 class RunManager:
-    """Starts AI turns as background tasks, returns immediately."""
+    """Starts AI turns as background tasks, returns immediately.
 
-    def __init__(self, db: AsyncSession):
-        self.db = db
+    Does NOT store a db session — each background task creates its own.
+    """
 
-    async def start_run(self, session_id: str, prompt: str) -> dict:
+    @staticmethod
+    async def start_run(session_id: str, prompt: str) -> dict:
         """Start an async AI turn. Returns run status immediately."""
         if session_id in _running and not _running[session_id].done():
             raise ConflictError(f"Session {session_id} is already running")
 
-        mgr = SessionManager(self.db)
-
-        # Verify session exists, reset stuck status if needed
-        session = await mgr.get_session(session_id)
-        if session.status == "running":
-            # Reset stuck session
-            await mgr.update_status(session_id, "idle")
         async def _run():
-            try:
-                result = await mgr.run_turn(session_id=session_id, user_prompt=prompt)
-                if not result.success:
-                    await event_bus.publish(Event(
-                        type="error", session_id=session_id, seq=0,
-                        payload={"error": result.error or "Unknown error"},
-                    ))
-            except Exception as e:
-                logger.exception("Background run failed: %s", e)
+            # Create a fresh db session for the background task
+            async with async_session_factory() as db:
                 try:
-                    await mgr.update_status(session_id, "error")
-                except Exception:
-                    pass
-            finally:
-                _running.pop(session_id, None)
+                    mgr = SessionManager(db)
+                    # Verify session exists, reset stuck status if needed
+                    session = await mgr.get_session(session_id)
+                    if session.status == "running":
+                        await mgr.update_status(session_id, "idle")
+
+                    result = await mgr.run_turn(session_id=session_id, user_prompt=prompt)
+                    # Explicitly commit — async_session_factory does NOT auto-commit
+                    await db.commit()
+
+                    if not result.success:
+                        await event_bus.publish(Event(
+                            type="error", session_id=session_id, seq=0,
+                            payload={"error": result.error or "Unknown error"},
+                        ))
+                except Exception as e:
+                    logger.exception("Background run failed: %s", e)
+                    await db.rollback()
+                finally:
+                    _running.pop(session_id, None)
 
         task = asyncio.create_task(_run())
         _running[session_id] = task
@@ -70,7 +68,6 @@ class RunManager:
         task = _running.get(session_id)
         if task and not task.done():
             task.cancel()
-        mgr = SessionManager(None)  # placeholder — actual interrupt needs db
         _running.pop(session_id, None)
 
 

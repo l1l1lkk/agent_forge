@@ -116,9 +116,8 @@ async def add_message(
         )
         # If run=true, start async background turn (non-blocking)
         if body.run and body.role == "user":
-            run_mgr = RunManager(db)
             try:
-                await run_mgr.start_run(session_id, body.content)
+                await RunManager.start_run(session_id, body.content)
             except ConflictError:
                 pass  # Already running — message still saved
         return MessageResponse.model_validate(message)
@@ -151,9 +150,8 @@ class EventsResponse(BaseModel):
 @router.post("/{session_id}/runs", response_model=RunResponse, status_code=202)
 async def start_run(session_id: str, body: RunCreate, db: AsyncSession = Depends(get_db)):
     """Start an async AI run. Returns immediately, events stream via WebSocket."""
-    mgr = RunManager(db)
     try:
-        result = await mgr.start_run(session_id, body.content)
+        result = await RunManager.start_run(session_id, body.content)
         return RunResponse(**result)
     except NotFoundError as e:
         raise HTTPException(status_code=404, detail={"code": e.code, "message": e.message})

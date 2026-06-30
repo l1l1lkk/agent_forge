@@ -118,11 +118,14 @@ class ClaudeRunner(BaseRunner):
                         logger.warning("Event sink error: %s", e)
 
                     # Collect assistant messages for result
-                    if event.type in ("assistant_message", "assistant_text_delta"):
-                        collected_messages.append({
-                            "role": "assistant",
-                            "content": event.payload.get("text", json.dumps(event.payload)),
-                        })
+                    # Only collect assistant_message (final), skip text_delta (streaming fragments)
+                    if event.type == "assistant_message":
+                        text = _extract_text(event.payload)
+                        if text:
+                            collected_messages.append({
+                                "role": "assistant",
+                                "content": text,
+                            })
 
             # Read stderr
             if process.stderr:
@@ -243,3 +246,19 @@ class ClaudeRunner(BaseRunner):
         env.setdefault("PATH", os.environ.get("PATH", ""))
 
         return env
+
+
+def _extract_text(payload: dict) -> str:
+    """Extract clean text from an assistant_message payload.
+
+    Claude 2.1.196+ wraps text in content_blocks array:
+      {"content_blocks": [{"type": "text", "text": "Hello!"}]}
+    """
+    blocks = payload.get("content_blocks", [])
+    texts = []
+    for b in blocks:
+        if b.get("type") == "text":
+            t = b.get("text", "")
+            if t.strip():
+                texts.append(t)
+    return "\n".join(texts)
