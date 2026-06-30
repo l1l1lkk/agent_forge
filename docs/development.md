@@ -62,6 +62,20 @@ interrupting; it may have spawned a child process.
   a delegation result card with a link back to the child session.
 - Delegation depth is capped at three levels to prevent runaway chains.
 
+## Agent Settings
+
+- Agent settings are durable defaults for future turns and sessions:
+  `name`, `description`, `avatar`, `system_prompt`, `model`, `runner`,
+  built-in MCP server names, and tool allow/deny lists.
+- AgentForge stores Octopus-style UI-only fields in `agents.tool_policy_json`
+  to avoid a SQLite migration for existing local installs.
+- `GET /api/agents` hides archived agents by default. Use
+  `?include_archived=true` for administrative/debug views.
+- `POST /api/agents/{id}/archive` marks an agent as archived without deleting
+  its sessions.
+- Claude runner reads `tool_allow` and `tool_deny` from `tool_policy_json` and
+  passes them to Claude Code as `--allowedTools` and `--disallowedTools`.
+
 ## Verification
 
 Run fresh verification before claiming a batch is ready:

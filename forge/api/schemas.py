@@ -62,6 +62,11 @@ class AgentCreate(BaseModel):
     system_prompt: Optional[str] = Field(None, description="System prompt")
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(None, ge=1)
+    description: str = Field("", description="Human-readable purpose of the agent")
+    avatar: Optional[str] = Field(None, description="Agent icon or emoji")
+    mcp_servers: list[str] = Field(default_factory=lambda: ["ask", "bg"])
+    tool_allow: str = Field("", description="Newline-separated allow-list")
+    tool_deny: str = Field("", description="Newline-separated deny-list")
 
 
 class AgentUpdate(BaseModel):
@@ -72,6 +77,12 @@ class AgentUpdate(BaseModel):
     temperature: Optional[float] = Field(None, ge=0.0, le=2.0)
     max_tokens: Optional[int] = Field(None, ge=1)
     tool_policy_json: Optional[str] = Field(None)
+    description: Optional[str] = Field(None)
+    avatar: Optional[str] = Field(None)
+    mcp_servers: Optional[list[str]] = Field(None)
+    tool_allow: Optional[str] = Field(None)
+    tool_deny: Optional[str] = Field(None)
+    archived: Optional[bool] = Field(None)
 
 
 class AgentResponse(BaseModel):
@@ -83,6 +94,12 @@ class AgentResponse(BaseModel):
     temperature: Optional[float] = None
     max_tokens: Optional[int] = None
     tool_policy_json: Optional[str] = None
+    description: str = ""
+    avatar: Optional[str] = None
+    mcp_servers: list[str] = []
+    tool_allow: str = ""
+    tool_deny: str = ""
+    archived: bool = False
     created_at: str
     updated_at: str
 

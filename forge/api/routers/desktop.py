@@ -1,4 +1,4 @@
-"""Desktop bootstrap + runners API — endpoints for desktop app startup."""
+"""Desktop bootstrap + runners API 鈥?endpoints for desktop app startup."""
 
 from __future__ import annotations
 
@@ -302,7 +302,7 @@ async def desktop_diagnostics(db: AsyncSession = Depends(get_db)):
         })
 
     return {
-        "health": {"status": "ok", "version": "0.0.17rc1"},
+        "health": {"status": "ok", "version": "0.0.18rc1"},
         "db": {
             "projects": proj_count,
             "agents": agent_count,

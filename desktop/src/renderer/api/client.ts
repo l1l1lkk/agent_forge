@@ -1,12 +1,20 @@
 /** API client — all calls go through IPC to main process. */
 import type { Agent, AgentSession, ChatMessage, Connector } from './types'
 
-function api(): { get(path: string): Promise<any>; post(path: string, body?: any): Promise<any>; delete(path: string): Promise<any> } {
+type ApiProxy = {
+  get(path: string): Promise<any>
+  post(path: string, body?: any): Promise<any>
+  patch(path: string, body?: any): Promise<any>
+  delete(path: string): Promise<any>
+}
+
+function api(): ApiProxy {
   if (window.forgeDesktop?.api) return window.forgeDesktop.api
   // Fallback for browser dev
   return {
     get: async (path: string) => parseResponse(await fetch(`http://127.0.0.1:8765${path}`), path),
     post: async (path: string, body?: any) => parseResponse(await fetch(`http://127.0.0.1:8765${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), path),
+    patch: async (path: string, body?: any) => parseResponse(await fetch(`http://127.0.0.1:8765${path}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), path),
     delete: async (path: string) => parseResponse(await fetch(`http://127.0.0.1:8765${path}`, { method: 'DELETE' }), path),
   }
 }
@@ -28,9 +36,22 @@ async function parseResponse(response: Response, path: string): Promise<any> {
 
 export async function fetchAgents(): Promise<Agent[]> {
   const data = await api().get('/api/agents')
-  return (data.agents || []).map((a: any) => ({
-    id: a.id, name: a.name, avatar: _avatar(a.name), sessions: [],
-  }))
+  return (data.agents || []).map(mapAgent)
+}
+
+export async function createAgent(payload: AgentSettingsPayload): Promise<Agent> {
+  const saved = await api().post('/api/agents', toAgentApiPayload(payload))
+  return mapAgent(saved)
+}
+
+export async function updateAgent(agentId: string, payload: AgentSettingsPayload): Promise<Agent> {
+  const saved = await api().patch(`/api/agents/${agentId}`, toAgentApiPayload(payload))
+  return mapAgent(saved)
+}
+
+export async function archiveAgent(agentId: string): Promise<Agent> {
+  const saved = await api().post(`/api/agents/${agentId}/archive`)
+  return mapAgent(saved)
 }
 
 export async function fetchSessions(): Promise<AgentSession[]> {
@@ -183,4 +204,47 @@ function parseJson(value: unknown): any {
 function _avatar(name: string): string {
   const map: Record<string, string> = { coding: '💻', claude: '🧠', review: '🔬', default: '🤖' }
   return map[name] || map['default']
+}
+
+export type AgentSettingsPayload = {
+  name: string
+  description?: string
+  avatar?: string
+  systemPrompt?: string
+  model?: string
+  runner: string
+  mcpServers?: string[]
+  toolAllow?: string
+  toolDeny?: string
+}
+
+function mapAgent(a: any): Agent {
+  return {
+    id: a.id,
+    name: a.name,
+    avatar: a.avatar || _avatar(a.name),
+    sessions: [],
+    description: a.description || '',
+    runner: a.runner || 'claude',
+    model: a.model || '',
+    systemPrompt: a.system_prompt || '',
+    mcpServers: Array.isArray(a.mcp_servers) ? a.mcp_servers : [],
+    toolAllow: a.tool_allow || '',
+    toolDeny: a.tool_deny || '',
+    archived: Boolean(a.archived),
+  }
+}
+
+function toAgentApiPayload(payload: AgentSettingsPayload): any {
+  return {
+    name: payload.name,
+    description: payload.description || '',
+    avatar: payload.avatar || null,
+    system_prompt: payload.systemPrompt || '',
+    model: payload.model || null,
+    runner: payload.runner,
+    mcp_servers: payload.mcpServers || ['ask', 'bg'],
+    tool_allow: payload.toolAllow || '',
+    tool_deny: payload.toolDeny || '',
+  }
 }

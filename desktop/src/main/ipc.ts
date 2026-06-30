@@ -48,6 +48,10 @@ export function registerIpcHandlers(): void {
     return _httpPost(`http://${host}:${port}${apiPath}`, body)
   })
 
+  ipcMain.handle('api:patch', async (_event, apiPath: string, body: unknown) => {
+    return _httpPatch(`http://${host}:${port}${apiPath}`, body)
+  })
+
   ipcMain.handle('api:delete', async (_event, apiPath: string) => {
     return _httpDelete(`http://${host}:${port}${apiPath}`)
   })
@@ -108,10 +112,18 @@ function _httpGet(url: string): Promise<unknown> {
 }
 
 function _httpPost(url: string, body: unknown): Promise<unknown> {
+  return _httpJson(url, 'POST', body)
+}
+
+function _httpPatch(url: string, body: unknown): Promise<unknown> {
+  return _httpJson(url, 'PATCH', body)
+}
+
+function _httpJson(url: string, method: 'POST' | 'PATCH', body: unknown): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const postData = JSON.stringify(body || {})
     const req = http.request(url, {
-      method: 'POST',
+      method,
       headers: { 'Content-Type': 'application/json', 'Content-Length': String(Buffer.byteLength(postData)) },
       timeout: 10000,
     }, (res) => {
@@ -120,7 +132,7 @@ function _httpPost(url: string, body: unknown): Promise<unknown> {
       res.on('end', () => {
         const payload = _parseHttpPayload(data)
         if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
-          reject(new Error(`POST ${url} failed with ${res.statusCode}: ${_formatHttpError(payload, data)}`))
+          reject(new Error(`${method} ${url} failed with ${res.statusCode}: ${_formatHttpError(payload, data)}`))
           return
         }
         resolve(payload)

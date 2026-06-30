@@ -7173,6 +7173,7 @@ function api() {
   return {
     get: async (path) => parseResponse(await fetch(`http://127.0.0.1:8765${path}`), path),
     post: async (path, body) => parseResponse(await fetch(`http://127.0.0.1:8765${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }), path),
+    patch: async (path, body) => parseResponse(await fetch(`http://127.0.0.1:8765${path}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }), path),
     delete: async (path) => parseResponse(await fetch(`http://127.0.0.1:8765${path}`, { method: "DELETE" }), path)
   };
 }
@@ -7191,12 +7192,19 @@ async function parseResponse(response, path) {
 }
 async function fetchAgents() {
   const data = await api().get("/api/agents");
-  return (data.agents || []).map((a) => ({
-    id: a.id,
-    name: a.name,
-    avatar: _avatar(a.name),
-    sessions: []
-  }));
+  return (data.agents || []).map(mapAgent);
+}
+async function createAgent(payload) {
+  const saved = await api().post("/api/agents", toAgentApiPayload(payload));
+  return mapAgent(saved);
+}
+async function updateAgent(agentId, payload) {
+  const saved = await api().patch(`/api/agents/${agentId}`, toAgentApiPayload(payload));
+  return mapAgent(saved);
+}
+async function archiveAgent(agentId) {
+  const saved = await api().post(`/api/agents/${agentId}/archive`);
+  return mapAgent(saved);
 }
 async function fetchSessions() {
   const data = await api().get("/api/sessions");
@@ -7331,8 +7339,39 @@ function _avatar(name2) {
   const map = { coding: "💻", claude: "🧠", review: "🔬", default: "🤖" };
   return map[name2] || map["default"];
 }
+function mapAgent(a) {
+  return {
+    id: a.id,
+    name: a.name,
+    avatar: a.avatar || _avatar(a.name),
+    sessions: [],
+    description: a.description || "",
+    runner: a.runner || "claude",
+    model: a.model || "",
+    systemPrompt: a.system_prompt || "",
+    mcpServers: Array.isArray(a.mcp_servers) ? a.mcp_servers : [],
+    toolAllow: a.tool_allow || "",
+    toolDeny: a.tool_deny || "",
+    archived: Boolean(a.archived)
+  };
+}
+function toAgentApiPayload(payload) {
+  return {
+    name: payload.name,
+    description: payload.description || "",
+    avatar: payload.avatar || null,
+    system_prompt: payload.systemPrompt || "",
+    model: payload.model || null,
+    runner: payload.runner,
+    mcp_servers: payload.mcpServers || ["ask", "bg"],
+    tool_allow: payload.toolAllow || "",
+    tool_deny: payload.toolDeny || ""
+  };
+}
 const client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
+  archiveAgent,
+  createAgent,
   createDelegation,
   createSession,
   deleteSchedule,
@@ -7350,7 +7389,8 @@ const client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProper
   interruptSession,
   pauseSchedule,
   resumeSchedule,
-  sendMessage
+  sendMessage,
+  updateAgent
 }, Symbol.toStringTag, { value: "Module" }));
 const useAgentStore = create$1((set, get) => ({
   agents: [],
@@ -7388,6 +7428,15 @@ const useAgentStore = create$1((set, get) => ({
       expandedAgentIds: mockAgents.map((a) => a.id),
       selectedAgentId: mockAgents[0]?.id ?? null,
       error: null
+    });
+  },
+  upsertAgent: (agent) => {
+    const agents = get().agents;
+    const existing = agents.find((a) => a.id === agent.id);
+    const nextAgent = { ...agent, sessions: existing?.sessions ?? agent.sessions ?? [] };
+    set({
+      agents: existing ? agents.map((a) => a.id === agent.id ? nextAgent : a) : [nextAgent, ...agents],
+      selectedAgentId: get().selectedAgentId || nextAgent.id
     });
   },
   toggleAgent: (agentId) => {
@@ -8442,16 +8491,216 @@ function AgentTreeItem({ agent }) {
     /* @__PURE__ */ jsxRuntimeExports.jsx(CreateSessionModal, { agentId: agent.id, agentName: agent.name, open: showCreate, onClose: () => setShowCreate(false) })
   ] });
 }
-function AgentsSection() {
+const BUILTIN_TOOLS = ["ask", "bg"];
+const ICONS = ["🐙", "🤖", "🧠", "🔬", "🛠️", "✍️", "📊", "🦉"];
+function AgentSettingsDialog({ open, initialAgentId, onClose }) {
   const agents = useAgentStore((s) => s.agents);
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    SidebarSection,
+  const loadAgents = useAgentStore((s) => s.loadAgents);
+  const upsertAgent = useAgentStore((s) => s.upsertAgent);
+  const [selectedId, setSelectedId] = reactExports.useState(initialAgentId);
+  const selected = reactExports.useMemo(() => agents.find((a) => a.id === selectedId) ?? null, [agents, selectedId]);
+  const [name2, setName] = reactExports.useState("");
+  const [avatar, setAvatar] = reactExports.useState("🐙");
+  const [description, setDescription] = reactExports.useState("");
+  const [systemPrompt, setSystemPrompt] = reactExports.useState("");
+  const [model, setModel] = reactExports.useState("");
+  const [runner, setRunner] = reactExports.useState("claude");
+  const [mcpServers, setMcpServers] = reactExports.useState([...BUILTIN_TOOLS]);
+  const [toolAllow, setToolAllow] = reactExports.useState("");
+  const [toolDeny, setToolDeny] = reactExports.useState("");
+  const [connectors, setConnectors] = reactExports.useState([]);
+  const [error, setError] = reactExports.useState(null);
+  const [saving, setSaving] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    if (!open) return;
+    setSelectedId(initialAgentId);
+    fetchConnectors().then(setConnectors).catch(() => setConnectors([]));
+  }, [open, initialAgentId]);
+  reactExports.useEffect(() => {
+    if (!open) return;
+    setError(null);
+    setName(selected?.name ?? "");
+    setAvatar(selected?.avatar ?? "🐙");
+    setDescription(selected?.description ?? "");
+    setSystemPrompt(selected?.systemPrompt ?? "");
+    setModel(selected?.model ?? "");
+    setRunner(selected?.runner ?? "claude");
+    setMcpServers(selected?.mcpServers?.length ? selected.mcpServers : [...BUILTIN_TOOLS]);
+    setToolAllow(selected?.toolAllow ?? "");
+    setToolDeny(selected?.toolDeny ?? "");
+  }, [open, selected]);
+  if (!open) return null;
+  const toggleTool = (tool) => {
+    setMcpServers((cur) => cur.includes(tool) ? cur.filter((x2) => x2 !== tool) : [...cur, tool]);
+  };
+  const save = async () => {
+    if (!name2.trim()) {
+      setError("Name is required");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const payload = {
+        name: name2.trim(),
+        description,
+        avatar,
+        systemPrompt,
+        model,
+        runner,
+        mcpServers,
+        toolAllow,
+        toolDeny
+      };
+      const saved = selected ? await updateAgent(selected.id, payload) : await createAgent(payload);
+      upsertAgent(saved);
+      await loadAgents();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+  const archive = async () => {
+    if (!selected) return;
+    setSaving(true);
+    setError(null);
+    try {
+      await archiveAgent(selected.id);
+      await loadAgents();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4", onMouseDown: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
     {
-      title: "Agents",
-      action: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-md p-1 text-app-muted hover:bg-app-hover hover:text-app-text", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }) }),
-      children: agents.map((agent) => /* @__PURE__ */ jsxRuntimeExports.jsx(AgentTreeItem, { agent }, agent.id))
+      className: "agent-settings-dialog flex max-h-[92vh] w-full max-w-3xl flex-col rounded-xl border border-app-border bg-app-panel shadow-2xl",
+      onMouseDown: (e) => e.stopPropagation(),
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start justify-between gap-4 px-6 pt-5", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-lg font-semibold text-app-text", children: "Agent settings" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 max-w-2xl text-sm leading-6 text-app-muted", children: "An agent is a durable assistant: its system prompt, model, tools and schedules persist across sessions. Pick one to edit, or create a new one." })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-lg p-1.5 text-app-muted hover:bg-app-hover hover:text-app-text", onClick: onClose, title: "Close", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 18 }) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid min-h-0 flex-1 grid-cols-[180px_minmax(0,1fr)] gap-4 overflow-hidden px-6 py-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-1 overflow-y-auto border-r border-app-border pr-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                className: `flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm ${selectedId === null ? "bg-app-selected text-app-text" : "text-app-secondary hover:bg-app-hover hover:text-app-text"}`,
+                onClick: () => setSelectedId(null),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 15 }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "New agent" })
+                ]
+              }
+            ),
+            agents.map((agent) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                className: `flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm ${selectedId === agent.id ? "bg-app-selected text-app-text font-medium" : "text-app-secondary hover:bg-app-hover hover:text-app-text"}`,
+                onClick: () => setSelectedId(agent.id),
+                title: agent.name,
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "shrink-0 text-base", children: agent.avatar || "🐙" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 truncate", children: agent.name })
+                ]
+              },
+              agent.id
+            ))
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 space-y-3 overflow-y-auto pr-1", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Name", children: /* @__PURE__ */ jsxRuntimeExports.jsx("input", { className: "input", value: name2, onChange: (e) => setName(e.target.value), placeholder: "Researcher", autoFocus: true }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Icon", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center gap-1.5", children: [
+              ICONS.map((icon) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  className: `flex h-9 w-9 items-center justify-center rounded-md border text-lg ${avatar === icon ? "border-blue-500 bg-blue-500/10" : "border-app-border hover:bg-app-hover"}`,
+                  onClick: () => setAvatar(icon),
+                  "aria-pressed": avatar === icon,
+                  children: icon
+                },
+                icon
+              )),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("input", { className: "input h-9 w-14 text-center", value: avatar, onChange: (e) => setAvatar(e.target.value), "aria-label": "Custom icon" })
+            ] }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Description", children: /* @__PURE__ */ jsxRuntimeExports.jsx("input", { className: "input", value: description, onChange: (e) => setDescription(e.target.value), placeholder: "What this agent is for (optional)" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "System prompt", children: /* @__PURE__ */ jsxRuntimeExports.jsx("textarea", { className: "input min-h-[96px] resize-none", value: systemPrompt, onChange: (e) => setSystemPrompt(e.target.value), placeholder: "You are a meticulous research assistant..." }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Model", children: /* @__PURE__ */ jsxRuntimeExports.jsx("input", { className: "input", value: model, onChange: (e) => setModel(e.target.value), placeholder: "claude-opus-4-7 (blank = backend default)" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Harness", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(HarnessButton, { label: "Claude Code", active: runner === "claude", onClick: () => setRunner("claude") }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(HarnessButton, { label: "Codex", active: runner === "codex", onClick: () => setRunner("codex") })
+            ] }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Built-in tools", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex gap-3 text-sm text-app-text", children: BUILTIN_TOOLS.map((tool) => /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center gap-1.5", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", checked: mcpServers.includes(tool), onChange: () => toggleTool(tool) }),
+              tool
+            ] }, tool)) }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Connectors", children: connectors.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-app-muted", children: "No connectors installed yet - add one in the sidebar's Connectors section." }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-1 text-sm text-app-secondary", children: connectors.map((connector) => /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center gap-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", disabled: true }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: connector.label }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-app-muted", children: connector.status })
+            ] }, connector.id)) }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Allow tools", children: /* @__PURE__ */ jsxRuntimeExports.jsx("textarea", { className: "input min-h-[78px] resize-none", value: toolAllow, onChange: (e) => setToolAllow(e.target.value), placeholder: "one per line; blank = all" }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Field, { label: "Deny tools", children: /* @__PURE__ */ jsxRuntimeExports.jsx("textarea", { className: "input min-h-[78px] resize-none", value: toolDeny, onChange: (e) => setToolDeny(e.target.value), placeholder: "one per line; wins over allow" }) })
+            ] }),
+            error && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-lg border border-red-500/30 bg-red-950/30 px-3 py-2 text-sm text-red-200", children: error })
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between px-6 pb-5", children: [
+          selected ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50", onClick: archive, disabled: saving, children: "Archive agent" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", {}),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600 disabled:opacity-50", onClick: save, disabled: saving, children: saving ? "Saving..." : selected ? "Save" : "Create agent" })
+        ] })
+      ]
+    }
+  ) });
+}
+function Field({ label, children }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block space-y-1.5", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-medium text-app-text", children: label }),
+    children
+  ] });
+}
+function HarnessButton({ label, active, onClick }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "button",
+    {
+      type: "button",
+      className: `h-9 rounded-lg border text-sm ${active ? "border-blue-500 bg-blue-500/10 text-app-text" : "border-app-border text-app-secondary hover:bg-app-hover hover:text-app-text"}`,
+      onClick,
+      children: label
     }
   );
+}
+function AgentsSection() {
+  const agents = useAgentStore((s) => s.agents);
+  const [settingsOpen, setSettingsOpen] = reactExports.useState(false);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      SidebarSection,
+      {
+        title: "Agents",
+        action: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "rounded-md p-1 text-app-muted hover:bg-app-hover hover:text-app-text",
+            onClick: () => setSettingsOpen(true),
+            title: "Agent settings",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 })
+          }
+        ),
+        children: agents.map((agent) => /* @__PURE__ */ jsxRuntimeExports.jsx(AgentTreeItem, { agent }, agent.id))
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(AgentSettingsDialog, { open: settingsOpen, initialAgentId: null, onClose: () => setSettingsOpen(false) })
+  ] });
 }
 function SchedulesSection() {
   const setView = useAppStore((s) => s.setView);

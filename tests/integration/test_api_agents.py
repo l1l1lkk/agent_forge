@@ -36,6 +36,8 @@ class TestAgentAPI:
         assert data["temperature"] == 0.5
         assert data["max_tokens"] == 4096
         assert data["id"].startswith("agent_")
+        assert data["mcp_servers"] == ["ask", "bg"]
+        assert data["archived"] is False
 
     async def test_create_agent_minimal(self, client: AsyncClient):
         """Agent should be creatable with just name and runner."""
@@ -101,6 +103,57 @@ class TestAgentAPI:
         assert data["model"] == "claude-sonnet-4-6"
         assert data["temperature"] == 0.8
         assert data["name"] == "update-me"  # unchanged
+
+    async def test_agent_settings_fields_round_trip(self, client: AsyncClient):
+        r = await client.post(
+            "/api/agents",
+            json={
+                "name": "settings-agent",
+                "runner": "claude",
+                "description": "Reviews risky patches",
+                "avatar": "🔬",
+                "mcp_servers": ["ask"],
+                "tool_allow": "Read\nGrep",
+                "tool_deny": "Write",
+            },
+        )
+        assert r.status_code == 201
+        data = r.json()
+        assert data["description"] == "Reviews risky patches"
+        assert data["avatar"] == "🔬"
+        assert data["mcp_servers"] == ["ask"]
+        assert data["tool_allow"] == "Read\nGrep"
+        assert data["tool_deny"] == "Write"
+
+        agent_id = data["id"]
+        updated = await client.patch(
+            f"/api/agents/{agent_id}",
+            json={"description": "Research and review", "mcp_servers": ["ask", "bg"]},
+        )
+        assert updated.status_code == 200
+        assert updated.json()["description"] == "Research and review"
+        assert updated.json()["mcp_servers"] == ["ask", "bg"]
+        assert updated.json()["tool_deny"] == "Write"
+
+    async def test_archive_agent_hides_from_default_list(self, client: AsyncClient):
+        created = await client.post(
+            "/api/agents",
+            json={"name": "archive-me", "runner": "claude"},
+        )
+        agent_id = created.json()["id"]
+
+        archived = await client.post(f"/api/agents/{agent_id}/archive")
+        assert archived.status_code == 200
+        assert archived.json()["archived"] is True
+
+        listed = await client.get("/api/agents")
+        assert listed.status_code == 200
+        assert listed.json()["agents"] == []
+
+        all_agents = await client.get("/api/agents?include_archived=true")
+        assert all_agents.status_code == 200
+        assert all_agents.json()["total"] == 1
+        assert all_agents.json()["agents"][0]["id"] == agent_id
 
     async def test_delete_agent(self, client: AsyncClient):
         created = await client.post(

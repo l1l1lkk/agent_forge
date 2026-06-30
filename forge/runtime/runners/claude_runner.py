@@ -217,6 +217,14 @@ class ClaudeRunner(BaseRunner):
         if agent.system_prompt:
             cmd.extend(["--append-system-prompt", agent.system_prompt])
 
+        policy = _agent_policy(agent)
+        allowed_tools = _tool_lines(policy.get("tool_allow"))
+        denied_tools = _tool_lines(policy.get("tool_deny"))
+        if allowed_tools:
+            cmd.extend(["--allowedTools", ",".join(allowed_tools)])
+        if denied_tools:
+            cmd.extend(["--disallowedTools", ",".join(denied_tools)])
+
         # Permission mode
         cmd.extend(["--permission-mode", self._permission_mode])
 
@@ -267,3 +275,19 @@ def _extract_text(payload: dict) -> str:
             if t.strip():
                 texts.append(t)
     return "\n".join(texts)
+
+
+def _agent_policy(agent: AgentModel) -> dict:
+    if not agent.tool_policy_json:
+        return {}
+    try:
+        parsed = json.loads(agent.tool_policy_json)
+        return parsed if isinstance(parsed, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _tool_lines(value: object) -> list[str]:
+    if not isinstance(value, str):
+        return []
+    return [line.strip() for line in value.splitlines() if line.strip()]

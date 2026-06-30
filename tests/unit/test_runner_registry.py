@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+
+from forge.db.models import AgentModel, ProjectModel
 from forge.runtime.runners.registry import RunnerRegistry, registry
 from forge.runtime.runners.claude_runner import ClaudeRunner
 
@@ -33,3 +36,23 @@ class TestRunnerRegistry:
         reg.register(runner)
         assert reg.get("claude") is runner
         assert "claude" in reg.list_names()
+
+
+class TestClaudeRunnerCommand:
+    def test_tool_allow_and_deny_are_passed_to_cli(self):
+        runner = ClaudeRunner(claude_bin="claude")
+        agent = AgentModel(
+            id="agent_test",
+            name="reviewer",
+            runner="claude",
+            tool_policy_json=json.dumps({
+                "tool_allow": "Read\nGrep",
+                "tool_deny": "Write\nEdit",
+            }),
+        )
+        project = ProjectModel(id="proj_test", name="proj", root_path="D:\\agentforge")
+
+        cmd = runner._build_command(agent, project, "hello", [])
+
+        assert cmd[cmd.index("--allowedTools") + 1] == "Read,Grep"
+        assert cmd[cmd.index("--disallowedTools") + 1] == "Write,Edit"

@@ -2,7 +2,18 @@ export type ConnectionStatus = 'checking' | 'connected' | 'disconnected'
 export type SessionStatus = 'idle' | 'running' | 'error' | 'done'
 
 export type Agent = {
-  id: string; name: string; avatar: string; sessions: AgentSession[]
+  id: string
+  name: string
+  avatar: string
+  sessions: AgentSession[]
+  description?: string
+  runner?: string
+  model?: string
+  systemPrompt?: string
+  mcpServers?: string[]
+  toolAllow?: string
+  toolDeny?: string
+  archived?: boolean
 }
 
 export type AgentSession = {

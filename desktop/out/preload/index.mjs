@@ -11,6 +11,7 @@ const forgeDesktop = {
   api: {
     get: (path) => ipcRenderer.invoke("api:get", path),
     post: (path, body) => ipcRenderer.invoke("api:post", path, body),
+    patch: (path, body) => ipcRenderer.invoke("api:patch", path, body),
     delete: (path) => ipcRenderer.invoke("api:delete", path)
   },
   dialog: {

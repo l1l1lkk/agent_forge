@@ -10,6 +10,7 @@ type AgentStore = {
   error: string | null
   demoMode: boolean
   loadAgents: () => Promise<void>
+  upsertAgent: (agent: Agent) => void
   enableDemoMode: () => void
   toggleAgent: (agentId: string) => void
   expandAgent: (agentId: string) => void
@@ -54,6 +55,18 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
       expandedAgentIds: mockAgents.map((a: Agent) => a.id),
       selectedAgentId: mockAgents[0]?.id ?? null,
       error: null,
+    })
+  },
+
+  upsertAgent: (agent) => {
+    const agents = get().agents
+    const existing = agents.find((a) => a.id === agent.id)
+    const nextAgent = { ...agent, sessions: existing?.sessions ?? agent.sessions ?? [] }
+    set({
+      agents: existing
+        ? agents.map((a) => a.id === agent.id ? nextAgent : a)
+        : [nextAgent, ...agents],
+      selectedAgentId: get().selectedAgentId || nextAgent.id,
     })
   },
 
