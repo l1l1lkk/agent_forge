@@ -47,6 +47,21 @@ interrupting; it may have spawned a child process.
 - Desktop features should work through Electron IPC and browser fallback when
   practical.
 
+## Multi-Agent Delegation
+
+- Delegation is modeled as a parent session plus a hidden child session. The
+  relationship is stored in `sessions.metadata_json` under `delegation` so
+  existing SQLite databases do not need a schema migration.
+- Start or continue work through
+  `POST /api/sessions/{parent_session_id}/delegations`.
+  - Use `agent` for a new delegated child session.
+  - Use `delegation_id` to continue an existing child session with its prior
+    context.
+- A delegated child result is injected back into the parent as an assistant
+  message with `metadata_json.delegation_result`. The desktop renders this as
+  a delegation result card with a link back to the child session.
+- Delegation depth is capped at three levels to prevent runaway chains.
+
 ## Verification
 
 Run fresh verification before claiming a batch is ready:

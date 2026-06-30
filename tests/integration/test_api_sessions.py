@@ -204,3 +204,91 @@ class TestSessionAPI:
         assert r.status_code == 200
         data = r.json()
         assert data["total"] == 1
+
+    async def test_create_delegation_session(self, client: AsyncClient):
+        proj_id, agent_id = await self._setup_project_and_agent(client)
+        reviewer = await client.post(
+            "/api/agents",
+            json={"name": "reviewer-agent", "runner": "codex"},
+        )
+        reviewer_id = reviewer.json()["id"]
+        parent = await client.post(
+            "/api/sessions",
+            json={"project": proj_id, "agent": agent_id, "title": "Parent"},
+        )
+        parent_id = parent.json()["id"]
+
+        r = await client.post(
+            f"/api/sessions/{parent_id}/delegations",
+            json={"agent": reviewer_id, "request": "Review auth.py", "title": "Review auth"},
+        )
+
+        assert r.status_code == 201
+        data = r.json()
+        assert data["delegation_id"].startswith("dlg_")
+        assert data["parent_session_id"] == parent_id
+        child = data["child_session"]
+        assert child["agent_id"] == reviewer_id
+        assert child["title"] == "Review auth"
+        assert "\"parent_session_id\"" in child["metadata_json"]
+        assert data["parent_message"]["role"] == "tool_call"
+
+        child_messages = await client.get(f"/api/sessions/{child['id']}/messages")
+        assert child_messages.json()["total"] == 1
+        assert "Delegation protocol" in child_messages.json()["messages"][0]["content"]
+
+    async def test_complete_delegation_injects_parent_result(self, client: AsyncClient):
+        proj_id, agent_id = await self._setup_project_and_agent(client)
+        reviewer = await client.post(
+            "/api/agents",
+            json={"name": "reviewer-result-agent", "runner": "codex"},
+        )
+        parent = await client.post(
+            "/api/sessions",
+            json={"project": proj_id, "agent": agent_id},
+        )
+        delegation = await client.post(
+            f"/api/sessions/{parent.json()['id']}/delegations",
+            json={"agent": reviewer.json()["id"], "request": "Review the patch"},
+        )
+        child_id = delegation.json()["child_session"]["id"]
+
+        result = await client.post(
+            f"/api/sessions/{child_id}/delegation-result",
+            json={"content": "No blocking issues."},
+        )
+
+        assert result.status_code == 201
+        assert result.json()["content"] == "No blocking issues."
+        parent_messages = await client.get(f"/api/sessions/{parent.json()['id']}/messages")
+        injected = parent_messages.json()["messages"][-1]
+        assert injected["role"] == "assistant"
+        assert "delegation_result" in injected["metadata_json"]
+
+    async def test_continue_delegation_reuses_child_session(self, client: AsyncClient):
+        proj_id, agent_id = await self._setup_project_and_agent(client)
+        reviewer = await client.post(
+            "/api/agents",
+            json={"name": "reviewer-continue-agent", "runner": "codex"},
+        )
+        parent = await client.post(
+            "/api/sessions",
+            json={"project": proj_id, "agent": agent_id},
+        )
+        first = await client.post(
+            f"/api/sessions/{parent.json()['id']}/delegations",
+            json={"agent": reviewer.json()["id"], "request": "Initial review"},
+        )
+        delegation_id = first.json()["delegation_id"]
+        child_id = first.json()["child_session"]["id"]
+
+        second = await client.post(
+            f"/api/sessions/{parent.json()['id']}/delegations",
+            json={"delegation_id": delegation_id, "request": "Check the fixes"},
+        )
+
+        assert second.status_code == 201
+        assert second.json()["child_session"]["id"] == child_id
+        child_messages = await client.get(f"/api/sessions/{child_id}/messages")
+        assert child_messages.json()["total"] == 2
+        assert "Check the fixes" in child_messages.json()["messages"][1]["content"]

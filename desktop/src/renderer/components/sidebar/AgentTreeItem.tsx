@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ChevronDown, ChevronRight, Plus } from 'lucide-react'
+import { ChevronDown, ChevronRight, EyeOff, Plus } from 'lucide-react'
 import type { Agent } from '../../api/types'
 import { useAgentStore } from '../../stores/agentStore'
 import { SessionTreeItem } from './SessionTreeItem'
@@ -13,6 +13,9 @@ export function AgentTreeItem({ agent }: { agent: Agent }) {
   const isExpanded = expandedAgentIds.includes(agent.id)
   const isSelected = selectedAgentId === agent.id
   const [showCreate, setShowCreate] = useState(false)
+  const [showDelegations, setShowDelegations] = useState(false)
+  const visibleSessions = agent.sessions.filter((s) => !s.hidden)
+  const hiddenSessions = agent.sessions.filter((s) => s.hidden)
 
   return (
     <div>
@@ -31,7 +34,17 @@ export function AgentTreeItem({ agent }: { agent: Agent }) {
       </div>
       {isExpanded && (
         <div className="ml-8 mt-1 space-y-1 border-l border-app-border pl-3">
-          {agent.sessions.map((s) => <SessionTreeItem key={s.id} session={s} />)}
+          {visibleSessions.map((s) => <SessionTreeItem key={s.id} session={s} />)}
+          {hiddenSessions.length > 0 && (
+            <button
+              className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-app-muted hover:bg-app-hover hover:text-app-text"
+              onClick={() => setShowDelegations(!showDelegations)}
+            >
+              <EyeOff size={13} />
+              <span>{showDelegations ? 'Hide delegations' : `+${hiddenSessions.length} delegation hidden`}</span>
+            </button>
+          )}
+          {showDelegations && hiddenSessions.map((s) => <SessionTreeItem key={s.id} session={s} />)}
         </div>
       )}
       <CreateSessionModal agentId={agent.id} agentName={agent.name} open={showCreate} onClose={() => setShowCreate(false)} />

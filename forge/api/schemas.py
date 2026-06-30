@@ -103,6 +103,14 @@ class SessionCreate(BaseModel):
     cwd: Optional[str] = Field(None, description="Working directory override")
 
 
+class DelegationCreate(BaseModel):
+    request: str = Field(..., min_length=1, description="Task to delegate")
+    agent: Optional[str] = Field(None, description="Target agent ID or name for a new delegation")
+    delegation_id: Optional[str] = Field(None, description="Existing delegation to continue")
+    title: Optional[str] = Field(None, description="Child session title")
+    run: bool = Field(False, description="If true, start the delegated agent immediately")
+
+
 class SessionResponse(BaseModel):
     id: str
     project_id: str
@@ -130,6 +138,17 @@ class MessageCreate(BaseModel):
     role: str = Field(..., description="Message role: user, assistant, system, tool")
     content: str = Field(..., description="Message content")
     run: bool = Field(False, description="If true, trigger an AI turn after adding the message")
+
+
+class DelegationResponse(BaseModel):
+    delegation_id: str
+    parent_session_id: str
+    child_session: SessionResponse
+    parent_message: Optional["MessageResponse"] = None
+
+
+class DelegationResultCreate(BaseModel):
+    content: str = Field(..., min_length=1, description="Result to inject into the parent session")
 
 
 class TurnResult(BaseModel):

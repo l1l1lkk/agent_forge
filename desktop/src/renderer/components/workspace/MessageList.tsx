@@ -8,6 +8,7 @@ import { ToolResultCard } from '../messages/ToolResultCard'
 import { StatusDivider } from '../messages/StatusDivider'
 import { ErrorCard } from '../messages/ErrorCard'
 import { ThinkingCard } from '../messages/ThinkingCard'
+import { DelegationResultCard } from '../messages/DelegationResultCard'
 
 export function MessageList() {
   const selectedSessionId = useSessionStore((s) => s.selectedSessionId)
@@ -26,6 +27,7 @@ export function MessageList() {
           if (m.type === 'thinking') return <ThinkingCard key={m.id} thinking={m.content || ''} />
           if (m.type === 'tool_invocation') return <ToolInvocationCard key={m.id} message={m} />
           if (m.type === 'tool_result') return <ToolResultCard key={m.id} message={m} />
+          if (m.type === 'delegation_result') return <DelegationResultCard key={m.id} message={m} />
           if (m.type === 'status') return <StatusDivider key={m.id} message={m} />
           if (m.type === 'error') return <ErrorCard key={m.id} message={m} />
           return null

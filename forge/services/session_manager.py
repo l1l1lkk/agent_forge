@@ -7,6 +7,7 @@ Now includes runner integration to execute AI turns.
 from __future__ import annotations
 
 import logging
+import json
 from datetime import datetime, timezone
 from typing import Optional, Sequence
 
@@ -53,6 +54,7 @@ class SessionManager:
         agent_identifier: str,
         title: Optional[str] = None,
         cwd: Optional[str] = None,
+        metadata: Optional[dict] = None,
     ) -> SessionModel:
         """Create a new session."""
         project_mgr = ProjectManager(self.db)
@@ -69,10 +71,123 @@ class SessionManager:
             status="idle",
             runner=agent.runner,
             cwd=cwd or project.root_path,
+            metadata_json=json.dumps(metadata) if metadata else None,
             created_at=_utc_iso(),
             updated_at=_utc_iso(),
         )
         return await self.session_repo.create(session)
+
+    async def create_or_continue_delegation(
+        self,
+        parent_session_id: str,
+        request: str,
+        agent_identifier: Optional[str] = None,
+        delegation_id: Optional[str] = None,
+        title: Optional[str] = None,
+    ) -> tuple[str, SessionModel, MessageModel]:
+        """Create a delegated child session or continue an existing delegation."""
+        parent = await self.get_session(parent_session_id)
+        parent_meta = _metadata(parent)
+        parent_delegation = parent_meta.get("delegation") or {}
+        parent_depth = int(parent_delegation.get("depth", 0))
+        if parent_depth >= 3:
+            raise ValueError("Delegation depth limit exceeded")
+
+        if delegation_id:
+            child = await self._find_delegation(parent_session_id, delegation_id)
+            if child is None:
+                raise NotFoundError("Delegation", delegation_id)
+            child_meta = _metadata(child)
+            delegation = child_meta.get("delegation") or {}
+        else:
+            if not agent_identifier:
+                raise ValueError("Either agent or delegation_id is required")
+            agent_mgr = AgentManager(self.db)
+            agent = await agent_mgr.get_agent(agent_identifier)
+            delegation_id = gen_id("dlg")
+            delegation = {
+                "id": delegation_id,
+                "parent_session_id": parent.id,
+                "parent_agent_id": parent.agent_id,
+                "parent_agent_name": parent.agent.name if parent.agent else parent.agent_id,
+                "target_agent_id": agent.id,
+                "target_agent_name": agent.name,
+                "hidden": True,
+                "depth": parent_depth + 1,
+                "status": "idle",
+            }
+            child = await self.create_session(
+                project_identifier=parent.project_id,
+                agent_identifier=agent.id,
+                title=title or f"{agent.name} <- {delegation['parent_agent_name']}",
+                cwd=parent.cwd,
+                metadata={"delegation": delegation},
+            )
+
+        await self.add_message(
+            child.id,
+            "user",
+            _delegation_prompt(parent, request),
+            metadata={"delegation_request": {"id": delegation_id, "parent_session_id": parent.id}},
+        )
+        parent_message = await self.add_message(
+            parent.id,
+            "tool_call",
+            json.dumps({
+                "tool": "mcp_ask_agent__ask",
+                "id": delegation_id,
+                "command": request,
+                "target_agent": delegation.get("target_agent_name", child.agent_id),
+                "child_session_id": child.id,
+            }),
+            metadata={"delegation_call": {"id": delegation_id, "child_session_id": child.id}},
+        )
+        return delegation_id, child, parent_message
+
+    async def complete_delegation(
+        self,
+        child_session_id: str,
+        content: str,
+    ) -> MessageModel:
+        """Inject a delegated child session result back into its parent session."""
+        child = await self.get_session(child_session_id)
+        delegation = (_metadata(child).get("delegation") or {})
+        parent_session_id = delegation.get("parent_session_id")
+        if not parent_session_id:
+            raise ValueError("Session is not a delegated child session")
+
+        await self.add_message(
+            child.id,
+            "assistant",
+            content,
+            metadata={"delegation_result": {"id": delegation.get("id"), "delivered_to_parent": True}},
+        )
+        return await self.add_message(
+            parent_session_id,
+            "assistant",
+            content,
+            metadata={
+                "delegation_result": {
+                    "id": delegation.get("id"),
+                    "child_session_id": child.id,
+                    "agent_id": child.agent_id,
+                    "agent_name": delegation.get("target_agent_name", child.agent_id),
+                }
+            },
+        )
+
+    async def _find_delegation(
+        self, parent_session_id: str, delegation_id: str
+    ) -> Optional[SessionModel]:
+        sessions, _ = await self.session_repo.list(project_id=None, limit=1000)
+        for session in sessions:
+            delegation = (_metadata(session).get("delegation") or {})
+            if (
+                delegation.get("id") == delegation_id
+                and delegation.get("parent_session_id") == parent_session_id
+            ):
+                return session
+        return None
 
     async def list_sessions(
         self, project_id: Optional[str] = None
@@ -118,6 +233,7 @@ class SessionManager:
         session_id: str,
         role: str,
         content: str,
+        metadata: Optional[dict] = None,
     ) -> MessageModel:
         """Add a message to a session."""
         if role not in VALID_ROLES:
@@ -136,6 +252,7 @@ class SessionManager:
             role=role,
             content=content,
             seq=seq,
+            metadata_json=json.dumps(metadata) if metadata else None,
             created_at=_utc_iso(),
         )
         return await self.message_repo.create(message)
@@ -151,6 +268,7 @@ class SessionManager:
         self,
         session_id: str,
         user_prompt: str,
+        persist_user_message: bool = True,
     ) -> RunnerResult:
         """Execute one AI turn for a session.
 
@@ -193,8 +311,9 @@ class SessionManager:
         if runner is None:
             raise RuntimeError(f"No runner available for: {agent.runner}")
 
-        # Add user message to DB
-        user_msg = await self.add_message(session_id, "user", user_prompt)
+        user_msg = None
+        if persist_user_message:
+            user_msg = await self.add_message(session_id, "user", user_prompt)
 
         # Set status to running
         await self.update_status(session_id, "running")
@@ -203,7 +322,7 @@ class SessionManager:
         history_items, _ = await self.message_repo.list_by_session(session_id)
         # Remove the last message (just added user message) from history
         # since we pass it separately as prompt
-        history = [m for m in history_items if m.id != user_msg.id]
+        history = [m for m in history_items if not user_msg or m.id != user_msg.id]
 
         # Event sink: persist events to DB, save tool events as messages, broadcast
         async def event_sink(event: Event):
@@ -274,6 +393,18 @@ class SessionManager:
                 except Exception as e:
                     logger.warning("Failed to save message: %s", e)
 
+            if result.success and _metadata(session).get("delegation"):
+                final_content = "\n\n".join(
+                    str(m.get("content", "")).strip()
+                    for m in result.messages
+                    if m.get("role", "assistant") == "assistant" and str(m.get("content", "")).strip()
+                )
+                if final_content:
+                    try:
+                        await self._inject_delegation_result(session, final_content)
+                    except Exception as e:
+                        logger.warning("Failed to inject delegation result: %s", e)
+
             # Update session status
             if result.success:
                 await self.update_status(session_id, "idle")
@@ -306,6 +437,53 @@ class SessionManager:
 
         await self.update_status(session_id, "interrupted")
 
+    async def _inject_delegation_result(
+        self,
+        child: SessionModel,
+        content: str,
+    ) -> MessageModel:
+        delegation = (_metadata(child).get("delegation") or {})
+        parent_session_id = delegation.get("parent_session_id")
+        if not parent_session_id:
+            raise ValueError("Session is not a delegated child session")
+        return await self.add_message(
+            parent_session_id,
+            "assistant",
+            content,
+            metadata={
+                "delegation_result": {
+                    "id": delegation.get("id"),
+                    "child_session_id": child.id,
+                    "agent_id": child.agent_id,
+                    "agent_name": delegation.get("target_agent_name", child.agent_id),
+                }
+            },
+        )
+
 
 def _utc_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _metadata(model: SessionModel | MessageModel) -> dict:
+    if not model.metadata_json:
+        return {}
+    try:
+        data = json.loads(model.metadata_json)
+        return data if isinstance(data, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+def _delegation_prompt(parent: SessionModel, request: str) -> str:
+    parent_name = parent.agent.name if parent.agent else parent.agent_id
+    return (
+        f"You were asked by agent {parent_name} (session {parent.id}) to handle a task "
+        "on their behalf.\n\n"
+        "Delegation protocol:\n"
+        "- This is a single-turn delegation unless the caller continues it with the same delegation_id.\n"
+        "- Do the work before responding; do not send only a preliminary acknowledgement.\n"
+        "- End with a clear, self-contained result that the caller can act on.\n\n"
+        "The request follows.\n\n"
+        f"{request}"
+    )

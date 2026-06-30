@@ -1,7 +1,8 @@
 import { useAppStore } from '../../stores/appStore'
 import { useAgentStore } from '../../stores/agentStore'
 import { useSessionStore } from '../../stores/sessionStore'
-import { Settings, Activity, GitBranch } from 'lucide-react'
+import { useNavigationStore } from '../../stores/navigationStore'
+import { Settings, Activity, GitBranch, ArrowUpRight } from 'lucide-react'
 
 export function TopBar() {
   const connectionStatus = useAppStore((s) => s.connectionStatus)
@@ -10,9 +11,11 @@ export function TopBar() {
   const agents = useAgentStore((s) => s.agents)
   const selectedAgentId = useAgentStore((s) => s.selectedAgentId)
   const selectedSessionId = useSessionStore((s) => s.selectedSessionId)
+  const openChat = useNavigationStore((s) => s.openChat)
 
   const agent = agents.find((a) => a.id === selectedAgentId)
-  const session = agent?.sessions.find((s) => s.id === selectedSessionId)
+  const session = agents.flatMap((a) => a.sessions).find((s) => s.id === selectedSessionId)
+  const delegation = session?.delegation
 
   const statusClass = connectionStatus === 'connected' ? 'bg-emerald-400' : connectionStatus === 'checking' ? 'bg-yellow-400' : 'bg-red-400'
 
@@ -29,6 +32,16 @@ export function TopBar() {
         <span className="text-app-muted">/</span>
         <span className="font-semibold text-app-text">{session?.name ?? 'No Session'}</span>
         <span className="ml-2 rounded-full bg-app-card px-2 py-0.5 text-xs text-app-muted">{session?.status ?? 'idle'}</span>
+        {delegation?.parentSessionId && (
+          <button
+            className="ml-2 flex items-center gap-1 rounded-md px-2 py-1 text-xs text-app-muted hover:bg-app-hover hover:text-app-text"
+            onClick={() => openChat({ agentId: delegation.parentAgentId, sessionId: delegation.parentSessionId })}
+            title="Open parent session"
+          >
+            <ArrowUpRight size={13} />
+            <span>Delegated from {delegation.parentAgentName || 'parent'}</span>
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-3 text-xs text-app-muted">

@@ -35,9 +35,26 @@ export async function fetchAgents(): Promise<Agent[]> {
 
 export async function fetchSessions(): Promise<AgentSession[]> {
   const data = await api().get('/api/sessions')
-  return (data.sessions || []).map((s: any) => ({
-    id: s.id, agentId: s.agent_id, name: s.title || s.id.slice(-8), status: s.status || 'idle',
-  }))
+  return (data.sessions || []).map((s: any) => {
+    const metadata = parseJson(s.metadata_json)
+    const delegation = metadata.delegation
+    return {
+      id: s.id,
+      agentId: s.agent_id,
+      name: s.title || s.id.slice(-8),
+      status: s.status || 'idle',
+      hidden: Boolean(delegation?.hidden),
+      delegation: delegation ? {
+        id: delegation.id,
+        parentSessionId: delegation.parent_session_id,
+        parentAgentId: delegation.parent_agent_id,
+        parentAgentName: delegation.parent_agent_name,
+        targetAgentId: delegation.target_agent_id,
+        targetAgentName: delegation.target_agent_name,
+        depth: delegation.depth,
+      } : undefined,
+    }
+  })
 }
 
 export async function fetchMessages(sessionId: string): Promise<ChatMessage[]> {
@@ -47,8 +64,18 @@ export async function fetchMessages(sessionId: string): Promise<ChatMessage[]> {
     let t: any = 'assistant'
     let content = m.content || ''
     let extra: any = {}
+    const metadata = parseJson(m.metadata_json)
 
-    if (role === 'user') t = 'user'
+    if (metadata.delegation_result) {
+      t = 'delegation_result'
+      extra = {
+        delegationId: metadata.delegation_result.id,
+        childSessionId: metadata.delegation_result.child_session_id,
+        agentId: metadata.delegation_result.agent_id,
+        agentName: metadata.delegation_result.agent_name,
+      }
+    }
+    else if (role === 'user') t = 'user'
     else if (role === 'thinking') t = 'thinking'
     else if (role === 'tool_call') {
       t = 'tool_invocation'
@@ -57,6 +84,7 @@ export async function fetchMessages(sessionId: string): Promise<ChatMessage[]> {
         content = p.command || content
         extra.toolName = p.tool || ''
         extra.summary = p.command || ''
+        extra.status = 'done'
       } catch {}
     }
     else if (role === 'tool_result') {
@@ -83,6 +111,10 @@ export async function fetchProjects(): Promise<any[]> {
 
 export async function createSession(projectId: string, agentId: string, title: string, cwd?: string): Promise<any> {
   return api().post('/api/sessions', { project: projectId, agent: agentId, title, cwd })
+}
+
+export async function createDelegation(parentSessionId: string, payload: { request: string; agent?: string; delegation_id?: string; title?: string; run?: boolean }): Promise<any> {
+  return api().post(`/api/sessions/${parentSessionId}/delegations`, payload)
 }
 
 export async function fetchRunners(): Promise<any[]> {
@@ -136,6 +168,16 @@ export async function deleteSession(sessionId: string): Promise<void> {
 export async function fetchConnectors(): Promise<Connector[]> {
   const data = await api().get('/api/connectors')
   return data.connectors || []
+}
+
+function parseJson(value: unknown): any {
+  if (!value || typeof value !== 'string') return {}
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
 }
 
 function _avatar(name: string): string {

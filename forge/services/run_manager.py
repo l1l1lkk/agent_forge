@@ -24,7 +24,7 @@ class RunManager:
     """
 
     @staticmethod
-    async def start_run(session_id: str, prompt: str) -> dict:
+    async def start_run(session_id: str, prompt: str, persist_user_message: bool = True) -> dict:
         """Start an async AI turn. Returns run status immediately."""
         if session_id in _running and not _running[session_id].done():
             raise ConflictError(f"Session {session_id} is already running")
@@ -39,7 +39,11 @@ class RunManager:
                     if session.status == "running":
                         await mgr.update_status(session_id, "idle")
 
-                    result = await mgr.run_turn(session_id=session_id, user_prompt=prompt)
+                    result = await mgr.run_turn(
+                        session_id=session_id,
+                        user_prompt=prompt,
+                        persist_user_message=persist_user_message,
+                    )
                     # Explicitly commit — async_session_factory does NOT auto-commit
                     await db.commit()
 

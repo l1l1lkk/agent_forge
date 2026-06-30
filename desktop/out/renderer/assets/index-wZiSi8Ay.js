@@ -7200,12 +7200,26 @@ async function fetchAgents() {
 }
 async function fetchSessions() {
   const data = await api().get("/api/sessions");
-  return (data.sessions || []).map((s) => ({
-    id: s.id,
-    agentId: s.agent_id,
-    name: s.title || s.id.slice(-8),
-    status: s.status || "idle"
-  }));
+  return (data.sessions || []).map((s) => {
+    const metadata = parseJson(s.metadata_json);
+    const delegation = metadata.delegation;
+    return {
+      id: s.id,
+      agentId: s.agent_id,
+      name: s.title || s.id.slice(-8),
+      status: s.status || "idle",
+      hidden: Boolean(delegation?.hidden),
+      delegation: delegation ? {
+        id: delegation.id,
+        parentSessionId: delegation.parent_session_id,
+        parentAgentId: delegation.parent_agent_id,
+        parentAgentName: delegation.parent_agent_name,
+        targetAgentId: delegation.target_agent_id,
+        targetAgentName: delegation.target_agent_name,
+        depth: delegation.depth
+      } : void 0
+    };
+  });
 }
 async function fetchMessages(sessionId) {
   const data = await api().get(`/api/sessions/${sessionId}/messages`);
@@ -7214,7 +7228,16 @@ async function fetchMessages(sessionId) {
     let t2 = "assistant";
     let content2 = m2.content || "";
     let extra = {};
-    if (role === "user") t2 = "user";
+    const metadata = parseJson(m2.metadata_json);
+    if (metadata.delegation_result) {
+      t2 = "delegation_result";
+      extra = {
+        delegationId: metadata.delegation_result.id,
+        childSessionId: metadata.delegation_result.child_session_id,
+        agentId: metadata.delegation_result.agent_id,
+        agentName: metadata.delegation_result.agent_name
+      };
+    } else if (role === "user") t2 = "user";
     else if (role === "thinking") t2 = "thinking";
     else if (role === "tool_call") {
       t2 = "tool_invocation";
@@ -7223,6 +7246,7 @@ async function fetchMessages(sessionId) {
         content2 = p2.command || content2;
         extra.toolName = p2.tool || "";
         extra.summary = p2.command || "";
+        extra.status = "done";
       } catch {
       }
     } else if (role === "tool_result") {
@@ -7246,6 +7270,9 @@ async function fetchProjects() {
 }
 async function createSession(projectId, agentId, title, cwd2) {
   return api().post("/api/sessions", { project: projectId, agent: agentId, title, cwd: cwd2 });
+}
+async function createDelegation(parentSessionId, payload) {
+  return api().post(`/api/sessions/${parentSessionId}/delegations`, payload);
 }
 async function fetchRunners() {
   const data = await api().get("/api/runners");
@@ -7291,12 +7318,22 @@ async function fetchConnectors() {
   const data = await api().get("/api/connectors");
   return data.connectors || [];
 }
+function parseJson(value) {
+  if (!value || typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 function _avatar(name2) {
   const map = { coding: "💻", claude: "🧠", review: "🔬", default: "🤖" };
   return map[name2] || map["default"];
 }
 const client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
+  createDelegation,
   createSession,
   deleteSchedule,
   deleteSession,
@@ -7548,6 +7585,127 @@ const useSessionStore = create$1((set, get) => ({
     });
   }
 }));
+const scriptRel = function detectScriptRel() {
+  const relList = typeof document !== "undefined" && document.createElement("link").relList;
+  return relList && relList.supports && relList.supports("modulepreload") ? "modulepreload" : "preload";
+}();
+const assetsURL = function(dep, importerUrl) {
+  return new URL(dep, importerUrl).href;
+};
+const seen = {};
+const __vitePreload = function preload(baseModule, deps, importerUrl) {
+  let promise = Promise.resolve();
+  if (deps && deps.length > 0) {
+    const links = document.getElementsByTagName("link");
+    const cspNonceMeta = document.querySelector(
+      "meta[property=csp-nonce]"
+    );
+    const cspNonce = cspNonceMeta?.nonce || cspNonceMeta?.getAttribute("nonce");
+    promise = Promise.allSettled(
+      deps.map((dep) => {
+        dep = assetsURL(dep, importerUrl);
+        if (dep in seen) return;
+        seen[dep] = true;
+        const isCss = dep.endsWith(".css");
+        const cssSelector = isCss ? '[rel="stylesheet"]' : "";
+        const isBaseRelative = !!importerUrl;
+        if (isBaseRelative) {
+          for (let i = links.length - 1; i >= 0; i--) {
+            const link22 = links[i];
+            if (link22.href === dep && (!isCss || link22.rel === "stylesheet")) {
+              return;
+            }
+          }
+        } else if (document.querySelector(`link[href="${dep}"]${cssSelector}`)) {
+          return;
+        }
+        const link2 = document.createElement("link");
+        link2.rel = isCss ? "stylesheet" : scriptRel;
+        if (!isCss) {
+          link2.as = "script";
+        }
+        link2.crossOrigin = "";
+        link2.href = dep;
+        if (cspNonce) {
+          link2.setAttribute("nonce", cspNonce);
+        }
+        document.head.appendChild(link2);
+        if (isCss) {
+          return new Promise((res, rej) => {
+            link2.addEventListener("load", res);
+            link2.addEventListener(
+              "error",
+              () => rej(new Error(`Unable to preload CSS for ${dep}`))
+            );
+          });
+        }
+      })
+    );
+  }
+  function handlePreloadError(err) {
+    const e = new Event("vite:preloadError", {
+      cancelable: true
+    });
+    e.payload = err;
+    window.dispatchEvent(e);
+    if (!e.defaultPrevented) {
+      throw err;
+    }
+  }
+  return promise.then((res) => {
+    for (const item of res || []) {
+      if (item.status !== "rejected") continue;
+      handlePreloadError(item.reason);
+    }
+    return baseModule().catch(handlePreloadError);
+  });
+};
+const useNavigationStore = create$1(() => ({
+  openChat: async (target) => {
+    const app = useAppStore.getState();
+    const agentStore = useAgentStore.getState();
+    const sessionStore = useSessionStore.getState();
+    app.setView("workspace");
+    await agentStore.loadAgents();
+    let agentId = target.agentId;
+    if (!agentId && target.runner) {
+      const agents = agentStore.agents;
+      const found = agents.find(
+        (a) => a.name?.toLowerCase().includes(target.runner)
+      );
+      agentId = found?.id ?? null;
+    }
+    if (!agentId) {
+      agentId = agentStore.selectedAgentId ?? agentStore.agents[0]?.id ?? null;
+    }
+    if (!agentId) {
+      app.setConnectionStatus("disconnected");
+      return;
+    }
+    agentStore.expandAgent(agentId);
+    agentStore.selectAgent(agentId);
+    let sessionId = target.sessionId;
+    if (!sessionId) {
+      const agent = agentStore.agents.find((a) => a.id === agentId);
+      sessionId = agent?.sessions?.[0]?.id ?? null;
+    }
+    if (!sessionId && target.createIfMissing) {
+      try {
+        const api2 = await __vitePreload(() => Promise.resolve().then(() => client), true ? void 0 : void 0, import.meta.url);
+        const projData = await api2.fetchProjects();
+        const projId = projData[0]?.id;
+        if (projId) {
+          const ses = await api2.createSession(projId, agentId, `${target.runner || "new"} chat`);
+          sessionId = ses.id;
+          await agentStore.loadAgents();
+        }
+      } catch {
+      }
+    }
+    if (!sessionId) return;
+    await sessionStore.selectSession(sessionId);
+  }
+}));
 /**
  * @license lucide-react v0.441.0 - ISC
  *
@@ -7650,6 +7808,16 @@ const Activity = createLucideIcon("Activity", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
+const ArrowUpRight = createLucideIcon("ArrowUpRight", [
+  ["path", { d: "M7 7h10v10", key: "1tivn9" }],
+  ["path", { d: "M7 17 17 7", key: "1vkiza" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
 const ArrowUp = createLucideIcon("ArrowUp", [
   ["path", { d: "m5 12 7-7 7 7", key: "hav0vg" }],
   ["path", { d: "M12 19V5", key: "x0mq9r" }]
@@ -7734,6 +7902,16 @@ const Copy = createLucideIcon("Copy", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
+const CornerDownLeft = createLucideIcon("CornerDownLeft", [
+  ["polyline", { points: "9 10 4 15 9 20", key: "r3jprv" }],
+  ["path", { d: "M20 4v7a4 4 0 0 1-4 4H4", key: "6o5b7l" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
 const Cpu = createLucideIcon("Cpu", [
   ["rect", { width: "16", height: "16", x: "4", y: "4", rx: "2", key: "14l7u7" }],
   ["rect", { width: "6", height: "6", x: "9", y: "9", rx: "1", key: "5aljv4" }],
@@ -7756,6 +7934,30 @@ const ExternalLink = createLucideIcon("ExternalLink", [
   ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
   ["path", { d: "M10 14 21 3", key: "gplh6r" }],
   ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", key: "a6xqqp" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const EyeOff = createLucideIcon("EyeOff", [
+  [
+    "path",
+    {
+      d: "M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49",
+      key: "ct8e1f"
+    }
+  ],
+  ["path", { d: "M14.084 14.158a3 3 0 0 1-4.242-4.242", key: "151rxh" }],
+  [
+    "path",
+    {
+      d: "M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143",
+      key: "13bj9a"
+    }
+  ],
+  ["path", { d: "m2 2 20 20", key: "1ooewy" }]
 ]);
 /**
  * @license lucide-react v0.441.0 - ISC
@@ -7990,8 +8192,10 @@ function TopBar() {
   const agents = useAgentStore((s) => s.agents);
   const selectedAgentId = useAgentStore((s) => s.selectedAgentId);
   const selectedSessionId = useSessionStore((s) => s.selectedSessionId);
+  const openChat = useNavigationStore((s) => s.openChat);
   const agent = agents.find((a) => a.id === selectedAgentId);
-  const session = agent?.sessions.find((s) => s.id === selectedSessionId);
+  const session = agents.flatMap((a) => a.sessions).find((s) => s.id === selectedSessionId);
+  const delegation = session?.delegation;
   const statusClass = connectionStatus === "connected" ? "bg-emerald-400" : connectionStatus === "checking" ? "bg-yellow-400" : "bg-red-400";
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "flex h-11 items-center justify-between border-b border-app-border bg-app-topbar px-4 select-none", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
@@ -8003,7 +8207,22 @@ function TopBar() {
       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-medium text-app-text", children: agent?.name ?? "No Agent" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-app-muted", children: "/" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-semibold text-app-text", children: session?.name ?? "No Session" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-2 rounded-full bg-app-card px-2 py-0.5 text-xs text-app-muted", children: session?.status ?? "idle" })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ml-2 rounded-full bg-app-card px-2 py-0.5 text-xs text-app-muted", children: session?.status ?? "idle" }),
+      delegation?.parentSessionId && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          className: "ml-2 flex items-center gap-1 rounded-md px-2 py-1 text-xs text-app-muted hover:bg-app-hover hover:text-app-text",
+          onClick: () => openChat({ agentId: delegation.parentAgentId, sessionId: delegation.parentSessionId }),
+          title: "Open parent session",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowUpRight, { size: 13 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+              "Delegated from ",
+              delegation.parentAgentName || "parent"
+            ] })
+          ]
+        }
+      )
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 text-xs text-app-muted", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `h-2 w-2 rounded-full ${statusClass}` }),
@@ -8027,127 +8246,6 @@ function SidebarSection({ title, count, action, children }) {
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-1", children })
   ] });
 }
-const scriptRel = function detectScriptRel() {
-  const relList = typeof document !== "undefined" && document.createElement("link").relList;
-  return relList && relList.supports && relList.supports("modulepreload") ? "modulepreload" : "preload";
-}();
-const assetsURL = function(dep, importerUrl) {
-  return new URL(dep, importerUrl).href;
-};
-const seen = {};
-const __vitePreload = function preload(baseModule, deps, importerUrl) {
-  let promise = Promise.resolve();
-  if (deps && deps.length > 0) {
-    const links = document.getElementsByTagName("link");
-    const cspNonceMeta = document.querySelector(
-      "meta[property=csp-nonce]"
-    );
-    const cspNonce = cspNonceMeta?.nonce || cspNonceMeta?.getAttribute("nonce");
-    promise = Promise.allSettled(
-      deps.map((dep) => {
-        dep = assetsURL(dep, importerUrl);
-        if (dep in seen) return;
-        seen[dep] = true;
-        const isCss = dep.endsWith(".css");
-        const cssSelector = isCss ? '[rel="stylesheet"]' : "";
-        const isBaseRelative = !!importerUrl;
-        if (isBaseRelative) {
-          for (let i = links.length - 1; i >= 0; i--) {
-            const link22 = links[i];
-            if (link22.href === dep && (!isCss || link22.rel === "stylesheet")) {
-              return;
-            }
-          }
-        } else if (document.querySelector(`link[href="${dep}"]${cssSelector}`)) {
-          return;
-        }
-        const link2 = document.createElement("link");
-        link2.rel = isCss ? "stylesheet" : scriptRel;
-        if (!isCss) {
-          link2.as = "script";
-        }
-        link2.crossOrigin = "";
-        link2.href = dep;
-        if (cspNonce) {
-          link2.setAttribute("nonce", cspNonce);
-        }
-        document.head.appendChild(link2);
-        if (isCss) {
-          return new Promise((res, rej) => {
-            link2.addEventListener("load", res);
-            link2.addEventListener(
-              "error",
-              () => rej(new Error(`Unable to preload CSS for ${dep}`))
-            );
-          });
-        }
-      })
-    );
-  }
-  function handlePreloadError(err) {
-    const e = new Event("vite:preloadError", {
-      cancelable: true
-    });
-    e.payload = err;
-    window.dispatchEvent(e);
-    if (!e.defaultPrevented) {
-      throw err;
-    }
-  }
-  return promise.then((res) => {
-    for (const item of res || []) {
-      if (item.status !== "rejected") continue;
-      handlePreloadError(item.reason);
-    }
-    return baseModule().catch(handlePreloadError);
-  });
-};
-const useNavigationStore = create$1(() => ({
-  openChat: async (target) => {
-    const app = useAppStore.getState();
-    const agentStore = useAgentStore.getState();
-    const sessionStore = useSessionStore.getState();
-    app.setView("workspace");
-    await agentStore.loadAgents();
-    let agentId = target.agentId;
-    if (!agentId && target.runner) {
-      const agents = agentStore.agents;
-      const found = agents.find(
-        (a) => a.name?.toLowerCase().includes(target.runner)
-      );
-      agentId = found?.id ?? null;
-    }
-    if (!agentId) {
-      agentId = agentStore.selectedAgentId ?? agentStore.agents[0]?.id ?? null;
-    }
-    if (!agentId) {
-      app.setConnectionStatus("disconnected");
-      return;
-    }
-    agentStore.expandAgent(agentId);
-    agentStore.selectAgent(agentId);
-    let sessionId = target.sessionId;
-    if (!sessionId) {
-      const agent = agentStore.agents.find((a) => a.id === agentId);
-      sessionId = agent?.sessions?.[0]?.id ?? null;
-    }
-    if (!sessionId && target.createIfMissing) {
-      try {
-        const api2 = await __vitePreload(() => Promise.resolve().then(() => client), true ? void 0 : void 0, import.meta.url);
-        const projData = await api2.fetchProjects();
-        const projId = projData[0]?.id;
-        if (projId) {
-          const ses = await api2.createSession(projId, agentId, `${target.runner || "new"} chat`);
-          sessionId = ses.id;
-          await agentStore.loadAgents();
-        }
-      } catch {
-      }
-    }
-    if (!sessionId) return;
-    await sessionStore.selectSession(sessionId);
-  }
-}));
 function SessionTreeItem({ session }) {
   const selectedSessionId = useSessionStore((s) => s.selectedSessionId);
   const openChat = useNavigationStore((s) => s.openChat);
@@ -8188,7 +8286,7 @@ function SessionTreeItem({ session }) {
           onClick: () => openChat({ agentId: session.agentId, sessionId: session.id }),
           children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `h-2 w-2 shrink-0 rounded-full ${dotColor}` }),
-            session.hidden && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-app-muted text-xs", children: "👁" }),
+            session.hidden && /* @__PURE__ */ jsxRuntimeExports.jsx(CornerDownLeft, { size: 13, className: "shrink-0 text-app-muted" }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `min-w-0 truncate ${session.hidden ? "text-app-muted" : ""}`, children: session.name })
           ]
         }
@@ -8303,6 +8401,9 @@ function AgentTreeItem({ agent }) {
   const isExpanded = expandedAgentIds.includes(agent.id);
   const isSelected = selectedAgentId === agent.id;
   const [showCreate, setShowCreate] = reactExports.useState(false);
+  const [showDelegations, setShowDelegations] = reactExports.useState(false);
+  const visibleSessions = agent.sessions.filter((s) => !s.hidden);
+  const hiddenSessions = agent.sessions.filter((s) => s.hidden);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "div",
@@ -8323,7 +8424,21 @@ function AgentTreeItem({ agent }) {
         ]
       }
     ),
-    isExpanded && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ml-8 mt-1 space-y-1 border-l border-app-border pl-3", children: agent.sessions.map((s) => /* @__PURE__ */ jsxRuntimeExports.jsx(SessionTreeItem, { session: s }, s.id)) }),
+    isExpanded && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ml-8 mt-1 space-y-1 border-l border-app-border pl-3", children: [
+      visibleSessions.map((s) => /* @__PURE__ */ jsxRuntimeExports.jsx(SessionTreeItem, { session: s }, s.id)),
+      hiddenSessions.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          className: "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-app-muted hover:bg-app-hover hover:text-app-text",
+          onClick: () => setShowDelegations(!showDelegations),
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(EyeOff, { size: 13 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: showDelegations ? "Hide delegations" : `+${hiddenSessions.length} delegation hidden` })
+          ]
+        }
+      ),
+      showDelegations && hiddenSessions.map((s) => /* @__PURE__ */ jsxRuntimeExports.jsx(SessionTreeItem, { session: s }, s.id))
+    ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(CreateSessionModal, { agentId: agent.id, agentName: agent.name, open: showCreate, onClose: () => setShowCreate(false) })
   ] });
 }
@@ -18230,6 +18345,34 @@ function ThinkingCard({ thinking }) {
     expanded && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-app-border bg-app-card/50 px-4 py-3 text-sm leading-6 text-app-muted italic", children: thinking })
   ] }) });
 }
+function DelegationResultCard({ message }) {
+  const openChat = useNavigationStore((s) => s.openChat);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-blue-500/30 bg-blue-950/20 px-4 py-3", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-2 flex items-center justify-between gap-3 text-xs text-blue-200", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(CornerDownLeft, { size: 14 }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "truncate", children: [
+          "From delegation ",
+          message.delegationId,
+          message.agentName ? ` · ${message.agentName}` : ""
+        ] })
+      ] }),
+      message.childSessionId && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          className: "flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-blue-200 hover:bg-blue-900/30 hover:text-blue-100",
+          onClick: () => openChat({ agentId: message.agentId, sessionId: message.childSessionId }),
+          title: "Open delegated session",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowUpRight, { size: 13 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Open session" })
+          ]
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "whitespace-pre-wrap text-sm leading-6 text-app-text", children: message.content })
+  ] });
+}
 function MessageList() {
   const selectedSessionId = useSessionStore((s) => s.selectedSessionId);
   const messagesBySession = useMessageStore((s) => s.messagesBySession);
@@ -18245,6 +18388,7 @@ function MessageList() {
       if (m2.type === "thinking") return /* @__PURE__ */ jsxRuntimeExports.jsx(ThinkingCard, { thinking: m2.content || "" }, m2.id);
       if (m2.type === "tool_invocation") return /* @__PURE__ */ jsxRuntimeExports.jsx(ToolInvocationCard, { message: m2 }, m2.id);
       if (m2.type === "tool_result") return /* @__PURE__ */ jsxRuntimeExports.jsx(ToolResultCard, { message: m2 }, m2.id);
+      if (m2.type === "delegation_result") return /* @__PURE__ */ jsxRuntimeExports.jsx(DelegationResultCard, { message: m2 }, m2.id);
       if (m2.type === "status") return /* @__PURE__ */ jsxRuntimeExports.jsx(StatusDivider, { message: m2 }, m2.id);
       if (m2.type === "error") return /* @__PURE__ */ jsxRuntimeExports.jsx(ErrorCard, { message: m2 }, m2.id);
       return null;

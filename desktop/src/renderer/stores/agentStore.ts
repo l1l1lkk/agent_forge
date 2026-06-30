@@ -12,6 +12,7 @@ type AgentStore = {
   loadAgents: () => Promise<void>
   enableDemoMode: () => void
   toggleAgent: (agentId: string) => void
+  expandAgent: (agentId: string) => void
   selectAgent: (agentId: string) => void
 }
 
