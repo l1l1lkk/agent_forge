@@ -92,7 +92,7 @@ class ClaudeRunner(BaseRunner):
                 *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
-                cwd=project.root_path,
+                cwd=session.cwd or project.root_path,
                 env=self._build_env(project, agent),
             )
 
@@ -117,9 +117,14 @@ class ClaudeRunner(BaseRunner):
                     except Exception as e:
                         logger.warning("Event sink error: %s", e)
 
-                    # Collect assistant messages for result
-                    # Only collect assistant_message (final), skip text_delta (streaming fragments)
-                    if event.type == "assistant_message":
+                    # Collect messages for result
+                    if event.type == "thinking_delta":
+                        collected_messages.append({
+                            "role": "thinking",
+                            "content": event.payload.get("text", ""),
+                            "signature": event.payload.get("signature", ""),
+                        })
+                    elif event.type == "assistant_message":
                         text = _extract_text(event.payload)
                         if text:
                             collected_messages.append({

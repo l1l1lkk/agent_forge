@@ -200,6 +200,9 @@ function registerIpcHandlers() {
   ipcMain.handle("api:post", async (_event, apiPath, body) => {
     return _httpPost(`http://${host}:${port}${apiPath}`, body);
   });
+  ipcMain.handle("api:delete", async (_event, apiPath) => {
+    return _httpDelete(`http://${host}:${port}${apiPath}`);
+  });
   ipcMain.handle("dialog:selectFolder", async () => {
     const win = BrowserWindow.getFocusedWindow();
     if (!win) return null;
@@ -261,6 +264,24 @@ function _httpPost(url, body) {
     });
     req.on("error", reject);
     req.write(postData);
+    req.end();
+  });
+}
+function _httpDelete(url) {
+  return new Promise((resolve, reject) => {
+    const req = http.request(url, { method: "DELETE", timeout: 1e4 }, (res) => {
+      let data = "";
+      res.on("data", (chunk) => data += chunk);
+      res.on("end", () => {
+        const payload = _parseHttpPayload(data);
+        if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+          reject(new Error(`DELETE ${url} failed with ${res.statusCode}: ${_formatHttpError(payload, data)}`));
+          return;
+        }
+        resolve(payload);
+      });
+    });
+    req.on("error", reject);
     req.end();
   });
 }

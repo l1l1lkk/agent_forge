@@ -18,7 +18,9 @@ export type Harness = {
 }
 
 export type ChatMessage =
-  | UserMessage | AssistantMessage | ToolInvocationMessage | ToolResultMessage | StatusMessage | ErrorMessage
+  | UserMessage | AssistantMessage | ThinkingMessage | ToolInvocationMessage | ToolResultMessage | StatusMessage | ErrorMessage
+
+export type ThinkingMessage = { id: string; type: 'thinking'; content: string; signature?: string; createdAt: string }
 
 export type UserMessage = { id: string; type: 'user'; content: string; createdAt: string }
 export type AssistantMessage = { id: string; type: 'assistant'; agentName: string; agentAvatar: string; content: string; createdAt: string }

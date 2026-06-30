@@ -10,7 +10,8 @@ const forgeDesktop = {
   },
   api: {
     get: (path) => ipcRenderer.invoke("api:get", path),
-    post: (path, body) => ipcRenderer.invoke("api:post", path, body)
+    post: (path, body) => ipcRenderer.invoke("api:post", path, body),
+    delete: (path) => ipcRenderer.invoke("api:delete", path)
   },
   dialog: {
     selectFolder: () => ipcRenderer.invoke("dialog:selectFolder")

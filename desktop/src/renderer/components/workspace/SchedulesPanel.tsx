@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Clock, Play, Pause, RefreshCw } from 'lucide-react'
+import { Clock, Play, Pause, RefreshCw, Trash2 } from 'lucide-react'
 import { useAppStore } from '../../stores/appStore'
-import { fetchSchedules, pauseSchedule, resumeSchedule } from '../../api/client'
+import { deleteSchedule, fetchSchedules, pauseSchedule, resumeSchedule } from '../../api/client'
 
 interface Schedule {
   id: string
@@ -43,6 +43,18 @@ export function SchedulesPanel() {
       } else {
         await resumeSchedule(s.name)
       }
+      await load()
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  async function remove(s: Schedule) {
+    const confirmed = window.confirm(`Delete schedule "${s.name}"?`)
+    if (!confirmed) return
+
+    try {
+      await deleteSchedule(s.name)
       await load()
     } catch (e) {
       setError(String(e))
@@ -111,17 +123,26 @@ export function SchedulesPanel() {
                   Agent: {s.agent_id.slice(0, 8)} / Project: {s.project_id.slice(0, 8)} / Created: {s.created_at.slice(0, 10)}
                 </div>
               </div>
-              <button
-                className={`rounded-lg p-2 transition-colors ${
-                  s.enabled
-                    ? 'text-amber-400 hover:bg-amber-900/20'
-                    : 'text-green-400 hover:bg-green-900/20'
-                }`}
-                onClick={() => toggle(s)}
-                title={s.enabled ? 'Pause' : 'Resume'}
-              >
-                {s.enabled ? <Pause size={16} /> : <Play size={16} />}
-              </button>
+              <div className="flex shrink-0 items-center gap-1">
+                <button
+                  className={`rounded-lg p-2 transition-colors ${
+                    s.enabled
+                      ? 'text-amber-400 hover:bg-amber-900/20'
+                      : 'text-green-400 hover:bg-green-900/20'
+                  }`}
+                  onClick={() => toggle(s)}
+                  title={s.enabled ? 'Pause' : 'Resume'}
+                >
+                  {s.enabled ? <Pause size={16} /> : <Play size={16} />}
+                </button>
+                <button
+                  className="rounded-lg p-2 text-red-400 transition-colors hover:bg-red-900/20"
+                  onClick={() => remove(s)}
+                  title="Delete"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
             </div>
           </div>
         ))}

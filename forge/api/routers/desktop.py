@@ -302,7 +302,7 @@ async def desktop_diagnostics(db: AsyncSession = Depends(get_db)):
         })
 
     return {
-        "health": {"status": "ok", "version": "0.0.15rc1"},
+        "health": {"status": "ok", "version": "0.0.16rc1"},
         "db": {
             "projects": proj_count,
             "agents": agent_count,

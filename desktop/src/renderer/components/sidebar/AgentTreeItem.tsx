@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { ChevronDown, ChevronRight, Plus } from 'lucide-react'
 import type { Agent } from '../../api/types'
 import { useAgentStore } from '../../stores/agentStore'
 import { SessionTreeItem } from './SessionTreeItem'
+import { CreateSessionModal } from './CreateSessionModal'
 
 export function AgentTreeItem({ agent }: { agent: Agent }) {
   const expandedAgentIds = useAgentStore((s) => s.expandedAgentIds)
@@ -10,6 +12,7 @@ export function AgentTreeItem({ agent }: { agent: Agent }) {
   const selectAgent = useAgentStore((s) => s.selectAgent)
   const isExpanded = expandedAgentIds.includes(agent.id)
   const isSelected = selectedAgentId === agent.id
+  const [showCreate, setShowCreate] = useState(false)
 
   return (
     <div>
@@ -22,7 +25,7 @@ export function AgentTreeItem({ agent }: { agent: Agent }) {
         </button>
         <span className="text-base">{agent.avatar}</span>
         <span className="min-w-0 flex-1 truncate font-medium">{agent.name}</span>
-        <button className="opacity-40 hover:opacity-100 text-app-muted" onClick={(e) => e.stopPropagation()}>
+        <button className="opacity-40 hover:opacity-100 text-app-muted" onClick={(e) => { e.stopPropagation(); setShowCreate(true) }}>
           <Plus size={14} />
         </button>
       </div>
@@ -31,6 +34,7 @@ export function AgentTreeItem({ agent }: { agent: Agent }) {
           {agent.sessions.map((s) => <SessionTreeItem key={s.id} session={s} />)}
         </div>
       )}
+      <CreateSessionModal agentId={agent.id} agentName={agent.name} open={showCreate} onClose={() => setShowCreate(false)} />
     </div>
   )
 }

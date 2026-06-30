@@ -48,6 +48,10 @@ export function registerIpcHandlers(): void {
     return _httpPost(`http://${host}:${port}${apiPath}`, body)
   })
 
+  ipcMain.handle('api:delete', async (_event, apiPath: string) => {
+    return _httpDelete(`http://${host}:${port}${apiPath}`)
+  })
+
   // ── Dialog ──────────────────────────────────────────────
 
   ipcMain.handle('dialog:selectFolder', async () => {
@@ -124,6 +128,25 @@ function _httpPost(url: string, body: unknown): Promise<unknown> {
     })
     req.on('error', reject)
     req.write(postData)
+    req.end()
+  })
+}
+
+function _httpDelete(url: string): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const req = http.request(url, { method: 'DELETE', timeout: 10000 }, (res) => {
+      let data = ''
+      res.on('data', (chunk: string) => (data += chunk))
+      res.on('end', () => {
+        const payload = _parseHttpPayload(data)
+        if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+          reject(new Error(`DELETE ${url} failed with ${res.statusCode}: ${_formatHttpError(payload, data)}`))
+          return
+        }
+        resolve(payload)
+      })
+    })
+    req.on('error', reject)
     req.end()
   })
 }

@@ -23,6 +23,7 @@ export default defineConfig({
   },
   renderer: {
     root: resolve(__dirname, 'src/renderer'),
+    server: { port: 19999 },
     build: {
       outDir: resolve(__dirname, 'out/renderer'),
       rollupOptions: {

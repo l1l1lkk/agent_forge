@@ -14,6 +14,12 @@ export function adaptEvent(event: any): ChatMessage | ChatMessage[] | null {
     case 'session_started':
       return { id, type: 'status', label: 'SESSION STARTED', createdAt: now }
 
+    case 'thinking_delta': {
+      const text = payload.text || ''
+      if (!text.trim()) return null
+      return { id: `thinking-${id}`, type: 'thinking', content: text, createdAt: now }
+    }
+
     case 'assistant_text_delta': {
       const text = payload.text || ''
       if (!text.trim()) return null

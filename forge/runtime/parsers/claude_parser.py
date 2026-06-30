@@ -118,8 +118,14 @@ class ClaudeParser:
                     },
                 ))
 
+            elif block_type == "thinking":
+                events.append(Event(
+                    type="thinking_delta",
+                    seq=self._next_seq(),
+                    session_id=self.session_id,
+                    payload={"text": block.get("thinking", ""), "signature": block.get("signature", "")},
+                ))
             else:
-                # Thinking, etc.
                 events.append(Event(
                     type="assistant_text_delta",
                     seq=self._next_seq(),

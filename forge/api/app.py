@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
 from forge.api.middleware import AuthMiddleware
-from forge.api.routers import agents, desktop, projects, schedules, sessions, tasks, ws
+from forge.api.routers import agents, connectors, desktop, projects, schedules, sessions, tasks, ws
 from forge.db.base import close_db, init_db
 
 
@@ -28,7 +28,7 @@ def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
         title="forge-agent",
-        version="0.0.15rc1",
+        version="0.0.16rc1",
         description="AI Coding CLI Workbench API",
         lifespan=lifespan,
     )
@@ -48,7 +48,7 @@ def create_app() -> FastAPI:
     # Health check
     @app.get("/api/health")
     async def health():
-        return {"status": "ok", "version": "0.0.15rc1"}
+        return {"status": "ok", "version": "0.0.16rc1"}
 
     # Register routers
     app.include_router(projects.router, prefix="/api")
@@ -56,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(sessions.router, prefix="/api")
     app.include_router(tasks.router, prefix="/api")
     app.include_router(schedules.router, prefix="/api")
+    app.include_router(connectors.router, prefix="/api")
     app.include_router(desktop.router)
     app.include_router(ws.router, prefix="/api")
 

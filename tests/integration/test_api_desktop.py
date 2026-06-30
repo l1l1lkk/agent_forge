@@ -54,6 +54,48 @@ async def test_desktop_diagnostics_reports_runner_and_db_counts(client: AsyncCli
     assert data["features"]["websocket"] is True
 
 
+async def test_connectors_list_returns_real_empty_collection(client: AsyncClient):
+    response = await client.get("/api/connectors")
+
+    assert response.status_code == 200
+    assert response.json() == {"connectors": [], "total": 0}
+
+
+async def test_schedule_delete_removes_schedule(client: AsyncClient, tmp_path):
+    project_response = await client.post(
+        "/api/projects",
+        json={"root_path": str(tmp_path), "name": "schedule-project"},
+    )
+    assert project_response.status_code == 201
+
+    agent_response = await client.post(
+        "/api/agents",
+        json={"name": "schedule-agent", "runner": "claude"},
+    )
+    assert agent_response.status_code == 201
+
+    create_response = await client.post(
+        "/api/schedules",
+        json={
+            "name": "nightly-review",
+            "project_id": project_response.json()["id"],
+            "agent_id": agent_response.json()["id"],
+            "cron": "0 1 * * *",
+            "prompt": "Review the workspace",
+            "enabled": False,
+        },
+    )
+    assert create_response.status_code == 201
+
+    delete_response = await client.delete("/api/schedules/nightly-review")
+    assert delete_response.status_code == 204
+
+    list_response = await client.get("/api/schedules")
+    assert list_response.status_code == 200
+    names = [item["name"] for item in list_response.json()["schedules"]]
+    assert "nightly-review" not in names
+
+
 # git-diff tests
 
 

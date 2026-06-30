@@ -33,7 +33,7 @@ VALID_STATUSES: set[str] = {
 }
 
 # Valid message roles
-VALID_ROLES: set[str] = {"user", "assistant", "system", "tool"}
+VALID_ROLES: set[str] = {"user", "assistant", "system", "tool", "tool_call", "tool_result", "thinking"}
 
 
 class SessionManager:
@@ -205,23 +205,43 @@ class SessionManager:
         # since we pass it separately as prompt
         history = [m for m in history_items if m.id != user_msg.id]
 
-        # Event sink: persist events to DB and broadcast via EventBus
+        # Event sink: persist events to DB, save tool events as messages, broadcast
         async def event_sink(event: Event):
-            # Persist to DB
+            import json as _json
+            # Persist to events table
             try:
                 db_event = EventModel(
-                    id=event.id,
-                    session_id=event.session_id,
-                    task_id=event.task_id,
-                    type=event.type,
-                    seq=event.seq,
-                    payload_json=event.payload if isinstance(event.payload, str)
-                    else __import__("json").dumps(event.payload),
+                    id=event.id, session_id=event.session_id, task_id=event.task_id,
+                    type=event.type, seq=event.seq,
+                    payload_json=event.payload if isinstance(event.payload, str) else _json.dumps(event.payload),
                     created_at=event.created_at.isoformat(),
                 )
                 await self.event_repo.create(db_event)
             except Exception as e:
                 logger.warning("Failed to persist event: %s", e)
+
+            # Also save tool events as messages so they survive session switches
+            if event.type == "tool_call_started":
+                try:
+                    cmd = ""
+                    inp = event.payload.get("input", {})
+                    if isinstance(inp, dict):
+                        cmd = inp.get("command", inp.get("url", str(inp)[:200]))
+                    await self.add_message(session_id, "tool_call", _json.dumps({
+                        "tool": event.payload.get("tool", ""), "command": cmd,
+                        "id": event.payload.get("id", ""),
+                    }))
+                except Exception as e2:
+                    logger.warning("Failed to save tool_call message: %s", e2)
+            elif event.type == "tool_result":
+                try:
+                    content = str(event.payload.get("content", ""))[:2000]
+                    await self.add_message(session_id, "tool_result", _json.dumps({
+                        "tool_use_id": event.payload.get("tool_use_id", ""),
+                        "content": content, "is_error": event.payload.get("is_error", False),
+                    }))
+                except Exception as e2:
+                    logger.warning("Failed to save tool_result message: %s", e2)
 
             # Broadcast to subscribers
             try:
@@ -240,22 +260,19 @@ class SessionManager:
                 event_sink=event_sink,
             )
 
-            # Save assistant messages from result (skip raw JSON payloads, only save clean text)
+            # Save messages from result
             for msg_data in result.messages:
+                role = msg_data.get("role", "assistant")
                 content = msg_data.get("content", "")
-                # Skip raw JSON payload dumps
-                if content.startswith("{") and ("content_blocks" in content or "thinking" in content):
-                    continue
                 if not content.strip():
                     continue
+                # Skip raw JSON payload dumps (only for assistant role)
+                if role == "assistant" and content.startswith("{") and ("content_blocks" in content):
+                    continue
                 try:
-                    await self.add_message(
-                        session_id,
-                        msg_data.get("role", "assistant"),
-                        content,
-                    )
+                    await self.add_message(session_id, role, content)
                 except Exception as e:
-                    logger.warning("Failed to save assistant message: %s", e)
+                    logger.warning("Failed to save message: %s", e)
 
             # Update session status
             if result.success:

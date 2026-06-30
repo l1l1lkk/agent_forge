@@ -1,6 +1,9 @@
 import type { StatusMessage } from '../../api/types'
 
 export function StatusDivider({ message }: { message: StatusMessage }) {
+  // Skip session started/system messages
+  if (message.label === 'SESSION STARTED' || message.label === 'RUNNING') return null
+
   return (
     <div className="flex justify-center py-3">
       <div className="rounded-full border border-app-border bg-app-card px-3 py-1 text-xs font-semibold uppercase tracking-wide text-app-muted">

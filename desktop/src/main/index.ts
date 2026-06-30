@@ -6,6 +6,8 @@
 
 import { app, BrowserWindow } from 'electron'
 import { join } from 'path'
+// Note: desktop loads its own renderer for Octopus workbench UI.
+// Web frontend at :9999 is a separate, simpler web console.
 import { registerIpcHandlers } from './ipc'
 import { daemon } from './daemonSingleton'
 import { getLocalConfig } from './configStore'

@@ -1,12 +1,13 @@
 /** API client — all calls go through IPC to main process. */
-import type { Agent, AgentSession, ChatMessage } from './types'
+import type { Agent, AgentSession, ChatMessage, Connector } from './types'
 
-function api(): { get(path: string): Promise<any>; post(path: string, body?: any): Promise<any> } {
+function api(): { get(path: string): Promise<any>; post(path: string, body?: any): Promise<any>; delete(path: string): Promise<any> } {
   if (window.forgeDesktop?.api) return window.forgeDesktop.api
   // Fallback for browser dev
   return {
     get: async (path: string) => parseResponse(await fetch(`http://127.0.0.1:8765${path}`), path),
     post: async (path: string, body?: any) => parseResponse(await fetch(`http://127.0.0.1:8765${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), path),
+    delete: async (path: string) => parseResponse(await fetch(`http://127.0.0.1:8765${path}`, { method: 'DELETE' }), path),
   }
 }
 
@@ -41,11 +42,34 @@ export async function fetchSessions(): Promise<AgentSession[]> {
 
 export async function fetchMessages(sessionId: string): Promise<ChatMessage[]> {
   const data = await api().get(`/api/sessions/${sessionId}/messages`)
-  return (data.messages || []).map((m: any) => ({
-    id: m.id, type: m.role === 'user' ? 'user' : 'assistant',
-    content: m.content || '', createdAt: m.created_at,
-    agentName: '', agentAvatar: '',
-  } as ChatMessage))
+  return (data.messages || []).map((m: any) => {
+    const role = m.role
+    let t: any = 'assistant'
+    let content = m.content || ''
+    let extra: any = {}
+
+    if (role === 'user') t = 'user'
+    else if (role === 'thinking') t = 'thinking'
+    else if (role === 'tool_call') {
+      t = 'tool_invocation'
+      try {
+        const p = JSON.parse(content)
+        content = p.command || content
+        extra.toolName = p.tool || ''
+        extra.summary = p.command || ''
+      } catch {}
+    }
+    else if (role === 'tool_result') {
+      t = 'tool_result'
+      try {
+        const p = JSON.parse(content)
+        content = p.content || content
+        extra.exitCode = p.is_error ? 1 : 0
+      } catch {}
+    }
+
+    return { id: m.id, type: t, content, createdAt: m.created_at, agentName: '', agentAvatar: '', ...extra } as ChatMessage
+  })
 }
 
 export async function sendMessage(sessionId: string, content: string): Promise<void> {
@@ -57,8 +81,8 @@ export async function fetchProjects(): Promise<any[]> {
   return data.projects || []
 }
 
-export async function createSession(projectId: string, agentId: string, title: string): Promise<any> {
-  return api().post('/api/sessions', { project: projectId, agent: agentId, title })
+export async function createSession(projectId: string, agentId: string, title: string, cwd?: string): Promise<any> {
+  return api().post('/api/sessions', { project: projectId, agent: agentId, title, cwd })
 }
 
 export async function fetchRunners(): Promise<any[]> {
@@ -97,11 +121,19 @@ export async function resumeSchedule(name: string): Promise<any> {
   return api().post(`/api/schedules/${name}/resume`)
 }
 
+export async function deleteSchedule(name: string): Promise<any> {
+  return api().delete(`/api/schedules/${encodeURIComponent(name)}`)
+}
+
 export async function interruptSession(sessionId: string): Promise<any> {
   return api().post(`/api/sessions/${sessionId}/interrupt`)
 }
 
-export async function fetchConnectors(): Promise<any[]> {
+export async function deleteSession(sessionId: string): Promise<void> {
+  await api().delete(`/api/sessions/${sessionId}`)
+}
+
+export async function fetchConnectors(): Promise<Connector[]> {
   const data = await api().get('/api/connectors')
   return data.connectors || []
 }
