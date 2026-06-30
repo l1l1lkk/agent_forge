@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { ConnectionStatus } from '../api/types'
 
-type AppView = 'workspace' | 'settings' | 'diagnostics' | 'schedules' | 'connectors'
+type AppView = 'workspace' | 'settings' | 'diagnostics' | 'schedules' | 'connectors' | 'git'
 
 type AppStore = {
   view: AppView

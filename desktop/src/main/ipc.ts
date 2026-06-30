@@ -92,8 +92,12 @@ function _httpGet(url: string): Promise<unknown> {
       let data = ''
       res.on('data', (chunk: string) => (data += chunk))
       res.on('end', () => {
-        try { resolve(JSON.parse(data)) }
-        catch { resolve(data) }
+        const payload = _parseHttpPayload(data)
+        if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+          reject(new Error(`GET ${url} failed with ${res.statusCode}: ${_formatHttpError(payload, data)}`))
+          return
+        }
+        resolve(payload)
       })
     }).on('error', reject)
   })
@@ -110,12 +114,28 @@ function _httpPost(url: string, body: unknown): Promise<unknown> {
       let data = ''
       res.on('data', (chunk: string) => (data += chunk))
       res.on('end', () => {
-        try { resolve(JSON.parse(data)) }
-        catch { resolve(data) }
+        const payload = _parseHttpPayload(data)
+        if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+          reject(new Error(`POST ${url} failed with ${res.statusCode}: ${_formatHttpError(payload, data)}`))
+          return
+        }
+        resolve(payload)
       })
     })
     req.on('error', reject)
     req.write(postData)
     req.end()
   })
+}
+
+function _parseHttpPayload(data: string): unknown {
+  try { return JSON.parse(data) }
+  catch { return data }
+}
+
+function _formatHttpError(payload: unknown, fallback: string): string {
+  if (payload && typeof payload === 'object' && 'detail' in payload) {
+    return JSON.stringify((payload as { detail: unknown }).detail)
+  }
+  return fallback
 }

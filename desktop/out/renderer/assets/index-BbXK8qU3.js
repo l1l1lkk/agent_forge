@@ -7170,9 +7170,22 @@ const useAppStore = create((set) => ({
 function api() {
   if (window.forgeDesktop?.api) return window.forgeDesktop.api;
   return {
-    get: async (path) => fetch(`http://127.0.0.1:8765${path}`).then((r2) => r2.json()),
-    post: async (path, body) => fetch(`http://127.0.0.1:8765${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r2) => r2.json())
+    get: async (path) => parseResponse(await fetch(`http://127.0.0.1:8765${path}`), path),
+    post: async (path, body) => parseResponse(await fetch(`http://127.0.0.1:8765${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }), path)
   };
+}
+async function parseResponse(response, path) {
+  const text = await response.text();
+  let payload = text;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+  }
+  if (!response.ok) {
+    const detail = typeof payload === "object" && payload?.detail ? JSON.stringify(payload.detail) : text;
+    throw new Error(`${response.status} ${response.statusText} for ${path}${detail ? `: ${detail}` : ""}`);
+  }
+  return payload;
 }
 async function fetchAgents() {
   const data = await api().get("/api/agents");
@@ -7223,6 +7236,34 @@ async function fetchRunners() {
     status: r2.available ? "ready" : "missing"
   }));
 }
+async function fetchDiagnostics() {
+  return api().get("/api/desktop/diagnostics");
+}
+async function fetchGitStatus(projectPath) {
+  const params = projectPath ? `?path=${encodeURIComponent(projectPath)}` : "";
+  return api().get(`/api/desktop/git-status${params}`);
+}
+async function fetchGitDiff(repoRoot, file) {
+  const params = `?path=${encodeURIComponent(repoRoot)}&file=${encodeURIComponent(file)}`;
+  return api().get(`/api/desktop/git-diff${params}`);
+}
+async function fetchSchedules() {
+  const data = await api().get("/api/schedules");
+  return data.schedules || [];
+}
+async function pauseSchedule(name) {
+  return api().post(`/api/schedules/${name}/pause`);
+}
+async function resumeSchedule(name) {
+  return api().post(`/api/schedules/${name}/resume`);
+}
+async function interruptSession(sessionId) {
+  return api().post(`/api/sessions/${sessionId}/interrupt`);
+}
+async function fetchConnectors() {
+  const data = await api().get("/api/connectors");
+  return data.connectors || [];
+}
 function _avatar(name) {
   const map = { coding: "💻", claude: "🧠", review: "🔬", default: "🤖" };
   return map[name] || map["default"];
@@ -7231,10 +7272,18 @@ const client = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProper
   __proto__: null,
   createSession,
   fetchAgents,
+  fetchConnectors,
+  fetchDiagnostics,
+  fetchGitDiff,
+  fetchGitStatus,
   fetchMessages,
   fetchProjects,
   fetchRunners,
+  fetchSchedules,
   fetchSessions,
+  interruptSession,
+  pauseSchedule,
+  resumeSchedule,
   sendMessage
 }, Symbol.toStringTag, { value: "Module" }));
 const useAgentStore = create((set, get) => ({
@@ -7552,6 +7601,21 @@ const createLucideIcon = (iconName, iconNode) => {
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
+const Activity = createLucideIcon("Activity", [
+  [
+    "path",
+    {
+      d: "M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2",
+      key: "169zse"
+    }
+  ]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
 const ArrowUp = createLucideIcon("ArrowUp", [
   ["path", { d: "m5 12 7-7 7 7", key: "hav0vg" }],
   ["path", { d: "M12 19V5", key: "x0mq9r" }]
@@ -7590,6 +7654,102 @@ const Clock = createLucideIcon("Clock", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
+const Cpu = createLucideIcon("Cpu", [
+  ["rect", { width: "16", height: "16", x: "4", y: "4", rx: "2", key: "14l7u7" }],
+  ["rect", { width: "6", height: "6", x: "9", y: "9", rx: "1", key: "5aljv4" }],
+  ["path", { d: "M15 2v2", key: "13l42r" }],
+  ["path", { d: "M15 20v2", key: "15mkzm" }],
+  ["path", { d: "M2 15h2", key: "1gxd5l" }],
+  ["path", { d: "M2 9h2", key: "1bbxkp" }],
+  ["path", { d: "M20 15h2", key: "19e6y8" }],
+  ["path", { d: "M20 9h2", key: "19tzq7" }],
+  ["path", { d: "M9 2v2", key: "165o2o" }],
+  ["path", { d: "M9 20v2", key: "i2bqo8" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const ExternalLink = createLucideIcon("ExternalLink", [
+  ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
+  ["path", { d: "M10 14 21 3", key: "gplh6r" }],
+  ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", key: "a6xqqp" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const FileWarning = createLucideIcon("FileWarning", [
+  ["path", { d: "M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z", key: "1rqfz7" }],
+  ["path", { d: "M12 9v4", key: "juzpu7" }],
+  ["path", { d: "M12 17h.01", key: "p32p05" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const FolderOpen = createLucideIcon("FolderOpen", [
+  [
+    "path",
+    {
+      d: "m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2",
+      key: "usdka0"
+    }
+  ]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const GitBranch = createLucideIcon("GitBranch", [
+  ["line", { x1: "6", x2: "6", y1: "3", y2: "15", key: "17qcm7" }],
+  ["circle", { cx: "18", cy: "6", r: "3", key: "1h7g24" }],
+  ["circle", { cx: "6", cy: "18", r: "3", key: "fqmcym" }],
+  ["path", { d: "M18 9a9 9 0 0 1-9 9", key: "n2h4wq" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const GitCommitHorizontal = createLucideIcon("GitCommitHorizontal", [
+  ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }],
+  ["line", { x1: "3", x2: "9", y1: "12", y2: "12", key: "1dyftd" }],
+  ["line", { x1: "15", x2: "21", y1: "12", y2: "12", key: "oup4p8" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const HardDrive = createLucideIcon("HardDrive", [
+  ["line", { x1: "22", x2: "2", y1: "12", y2: "12", key: "1y58io" }],
+  [
+    "path",
+    {
+      d: "M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z",
+      key: "oot6mr"
+    }
+  ],
+  ["line", { x1: "6", x2: "6.01", y1: "16", y2: "16", key: "sgf278" }],
+  ["line", { x1: "10", x2: "10.01", y1: "16", y2: "16", key: "1l4acy" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
 const MessageCircle = createLucideIcon("MessageCircle", [
   ["path", { d: "M7.9 20A9 9 0 1 0 4 16.1L2 22Z", key: "vv11sd" }]
 ]);
@@ -7614,9 +7774,64 @@ const Paperclip = createLucideIcon("Paperclip", [
  * This source code is licensed under the ISC license.
  * See the LICENSE file in the root directory of this source tree.
  */
+const Pause = createLucideIcon("Pause", [
+  ["rect", { x: "14", y: "4", width: "4", height: "16", rx: "1", key: "zuxfzm" }],
+  ["rect", { x: "6", y: "4", width: "4", height: "16", rx: "1", key: "1okwgv" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const Play = createLucideIcon("Play", [
+  ["polygon", { points: "6 3 20 12 6 21 6 3", key: "1oa8hb" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const Plug = createLucideIcon("Plug", [
+  ["path", { d: "M12 22v-5", key: "1ega77" }],
+  ["path", { d: "M9 8V2", key: "14iosj" }],
+  ["path", { d: "M15 8V2", key: "18g5xt" }],
+  ["path", { d: "M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z", key: "osxo6l" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
 const Plus = createLucideIcon("Plus", [
   ["path", { d: "M5 12h14", key: "1ays0h" }],
   ["path", { d: "M12 5v14", key: "s699le" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const RefreshCw = createLucideIcon("RefreshCw", [
+  ["path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8", key: "v9h5vc" }],
+  ["path", { d: "M21 3v5h-5", key: "1q7to0" }],
+  ["path", { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16", key: "3uifl3" }],
+  ["path", { d: "M8 16H3v5", key: "1cv678" }]
+]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const Server = createLucideIcon("Server", [
+  ["rect", { width: "20", height: "8", x: "2", y: "2", rx: "2", ry: "2", key: "ngkwjq" }],
+  ["rect", { width: "20", height: "8", x: "2", y: "14", rx: "2", ry: "2", key: "iecqi9" }],
+  ["line", { x1: "6", x2: "6.01", y1: "6", y2: "6", key: "16zg32" }],
+  ["line", { x1: "6", x2: "6.01", y1: "18", y2: "18", key: "nzw8ys" }]
 ]);
 /**
  * @license lucide-react v0.441.0 - ISC
@@ -7653,6 +7868,18 @@ const Terminal = createLucideIcon("Terminal", [
   ["polyline", { points: "4 17 10 11 4 5", key: "akl6gq" }],
   ["line", { x1: "12", x2: "20", y1: "19", y2: "19", key: "q2wloq" }]
 ]);
+/**
+ * @license lucide-react v0.441.0 - ISC
+ *
+ * This source code is licensed under the ISC license.
+ * See the LICENSE file in the root directory of this source tree.
+ */
+const Wifi = createLucideIcon("Wifi", [
+  ["path", { d: "M12 20h.01", key: "zekei9" }],
+  ["path", { d: "M2 8.82a15 15 0 0 1 20 0", key: "dnpr2z" }],
+  ["path", { d: "M5 12.859a10 10 0 0 1 14 0", key: "1x1e6c" }],
+  ["path", { d: "M8.5 16.429a5 5 0 0 1 7 0", key: "1bycff" }]
+]);
 function TopBar() {
   const connectionStatus = useAppStore((s) => s.connectionStatus);
   const daemonLabel = useAppStore((s) => s.daemonLabel);
@@ -7679,7 +7906,9 @@ function TopBar() {
       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `h-2 w-2 rounded-full ${statusClass}` }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: daemonLabel }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "Connected" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setView("diagnostics"), className: "ml-1 rounded-lg p-1.5 text-app-muted hover:bg-app-hover hover:text-app-text", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Settings, { size: 14 }) })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setView("git"), className: "ml-1 rounded-lg p-1.5 text-app-muted hover:bg-app-hover hover:text-app-text", title: "Git Workspace", children: /* @__PURE__ */ jsxRuntimeExports.jsx(GitBranch, { size: 14 }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setView("diagnostics"), className: "rounded-lg p-1.5 text-app-muted hover:bg-app-hover hover:text-app-text", title: "Diagnostics", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Activity, { size: 14 }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setView("settings"), className: "rounded-lg p-1.5 text-app-muted hover:bg-app-hover hover:text-app-text", title: "Settings", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Settings, { size: 14 }) })
     ] })
   ] });
 }
@@ -7893,7 +8122,8 @@ const mockConnectors = [
   { id: "m7", type: "status", label: "DONE", cost: "$0.2048", createdAt: (/* @__PURE__ */ new Date()).toISOString() }
 ];
 function ConnectorsSection() {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(SidebarSection, { title: "Connectors", action: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-md p-1 text-app-muted hover:bg-app-hover hover:text-app-text", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }) }), children: mockConnectors.map((c) => /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-app-hover", children: [
+  const setView = useAppStore((s) => s.setView);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(SidebarSection, { title: "Connectors", action: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-md p-1 text-app-muted hover:bg-app-hover hover:text-app-text", onClick: () => setView("connectors"), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 14 }) }), children: mockConnectors.map((c) => /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { className: "flex w-full items-center gap-2 rounded-lg px-2 py-2 text-sm hover:bg-app-hover", onClick: () => setView("connectors"), children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "rounded bg-app-badge px-1.5 py-0.5 text-[10px] font-bold uppercase text-app-accent", children: c.label }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 truncate text-app-secondary", children: c.account })
   ] }, c.id)) });
@@ -8103,17 +8333,655 @@ function MainWorkspace() {
     /* @__PURE__ */ jsxRuntimeExports.jsx(Composer, {})
   ] });
 }
+function SettingsPanel() {
+  const setView = useAppStore((s) => s.setView);
+  const daemonLabel = useAppStore((s) => s.daemonLabel);
+  const [data, setData] = reactExports.useState(null);
+  const [loading, setLoading] = reactExports.useState(true);
+  const [error, setError] = reactExports.useState(null);
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const d = await fetchDiagnostics();
+      setData(d);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+  reactExports.useEffect(() => {
+    load();
+  }, []);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "flex min-w-0 flex-1 flex-col bg-app-bg", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-12 items-center justify-between border-b border-app-border px-5", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-sm font-semibold text-app-text", children: "Settings" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "rounded-lg p-2 text-app-muted hover:bg-app-hover hover:text-app-text",
+            onClick: load,
+            title: "Refresh",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { size: 15, className: loading ? "animate-spin" : "" })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "rounded-lg border border-app-border px-3 py-1.5 text-sm text-app-secondary hover:bg-app-hover hover:text-app-text",
+            onClick: () => setView("workspace"),
+            children: "Back to Workspace"
+          }
+        )
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "overflow-y-auto p-5 space-y-4", children: [
+      loading && !data && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm text-app-muted", children: "Loading settings..." }),
+      error && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-red-800 bg-red-900/20 p-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-red-400", children: "Connection Error" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-1 text-sm text-red-300", children: error }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "mt-3 rounded-lg border border-red-700 px-3 py-1.5 text-sm text-red-300 hover:bg-red-900/40",
+            onClick: load,
+            children: "Retry"
+          }
+        )
+      ] }),
+      data && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "rounded-xl border border-app-border bg-app-panel p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Server, { size: 16, className: "text-app-accent" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-sm font-semibold text-app-text", children: "Server" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-3 text-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-muted text-xs mb-0.5", children: "Daemon" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-text", children: daemonLabel })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-muted text-xs mb-0.5", children: "Version" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-text font-mono", children: data.health.version })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-muted text-xs mb-0.5", children: "Health" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1.5", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-2 w-2 rounded-full bg-green-500" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-green-400", children: data.health.status })
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-muted text-xs mb-0.5", children: "Port" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-text font-mono", children: "8765" })
+            ] })
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "rounded-xl border border-app-border bg-app-panel p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(HardDrive, { size: 16, className: "text-app-accent" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-sm font-semibold text-app-text", children: "Database" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-3 text-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-muted text-xs mb-0.5", children: "Projects" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-text font-mono", children: data.db.projects })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-muted text-xs mb-0.5", children: "Agents" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-text font-mono", children: data.db.agents })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-muted text-xs mb-0.5", children: "Running Sessions" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-text font-mono", children: data.db.running_sessions })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-muted text-xs mb-0.5", children: "Running Tasks" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-text font-mono", children: data.db.running_tasks })
+            ] })
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "rounded-xl border border-app-border bg-app-panel p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Cpu, { size: 16, className: "text-app-accent" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-sm font-semibold text-app-text", children: "Runners" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-2", children: data.runners.map((r2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between rounded-lg border border-app-border/60 bg-app-bg px-3 py-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `h-2 w-2 rounded-full ${r2.available ? "bg-green-500" : "bg-red-500"}` }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-app-text font-medium", children: r2.name })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 text-xs", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `rounded px-1.5 py-0.5 font-semibold uppercase ${r2.available ? "bg-green-900/30 text-green-400" : "bg-red-900/30 text-red-400"}`, children: r2.available ? "Ready" : "Missing" }),
+              r2.path && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-app-muted font-mono truncate max-w-[200px]", children: r2.path })
+            ] })
+          ] }, r2.name)) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "rounded-xl border border-app-border bg-app-panel p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Activity, { size: 16, className: "text-app-accent" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-sm font-semibold text-app-text", children: "Features" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-2 gap-2", children: Object.entries(data.features).map(([key, enabled]) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between rounded-lg border border-app-border/60 bg-app-bg px-3 py-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-app-secondary capitalize", children: key.replace(/_/g, " ") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `h-2 w-2 rounded-full ${enabled ? "bg-green-500" : "bg-red-500"}` })
+          ] }, key)) })
+        ] })
+      ] })
+    ] })
+  ] });
+}
 function DiagnosticsPanel() {
   const setView = useAppStore((s) => s.setView);
+  const daemonLabel = useAppStore((s) => s.daemonLabel);
+  const [data, setData] = reactExports.useState(null);
+  const [loading, setLoading] = reactExports.useState(true);
+  const [error, setError] = reactExports.useState(null);
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const d = await fetchDiagnostics();
+      setData(d);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+  reactExports.useEffect(() => {
+    load();
+  }, []);
+  reactExports.useEffect(() => {
+    const interval = setInterval(load, 15e3);
+    return () => clearInterval(interval);
+  }, []);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "flex min-w-0 flex-1 flex-col bg-app-bg", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-12 items-center justify-between border-b border-app-border px-5", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-sm font-semibold text-app-text", children: "Diagnostics" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "rounded-lg border border-app-border px-3 py-1.5 text-sm text-app-secondary hover:bg-app-hover hover:text-app-text", onClick: () => setView("workspace"), children: "Back to Workspace" })
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "rounded-lg p-2 text-app-muted hover:bg-app-hover hover:text-app-text",
+            onClick: load,
+            title: "Refresh",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { size: 15, className: loading ? "animate-spin" : "" })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "rounded-lg border border-app-border px-3 py-1.5 text-sm text-app-secondary hover:bg-app-hover hover:text-app-text",
+            onClick: () => setView("workspace"),
+            children: "Back to Workspace"
+          }
+        )
+      ] })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-5", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-app-border bg-app-panel p-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-app-text", children: "Daemon Status" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2 text-sm text-app-muted", children: "Health: OK · Version: 0.0.9rc1 · Port: 8765" })
-    ] }) })
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "overflow-y-auto p-5 space-y-4", children: [
+      loading && !data && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-sm text-app-muted flex items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { size: 14, className: "animate-spin" }),
+        "Loading diagnostics..."
+      ] }),
+      error && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-red-800 bg-red-900/20 p-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-red-400", children: "Connection Error" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-1 text-sm text-red-300", children: error }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "mt-3 rounded-lg border border-red-700 px-3 py-1.5 text-sm text-red-300 hover:bg-red-900/40",
+            onClick: load,
+            children: "Retry"
+          }
+        )
+      ] }),
+      data && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-app-border bg-app-panel p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Server, { size: 16, className: "text-app-accent" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-app-text", children: "Daemon Status" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-y-2 text-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-muted", children: "Health" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1.5 text-app-text", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-2 w-2 rounded-full bg-green-500" }),
+              data.health.status,
+              " / v",
+              data.health.version
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-muted", children: "Daemon" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-app-text", children: [
+              daemonLabel,
+              " / Port 8765"
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-app-muted", children: "WebSocket" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1.5 text-app-text", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Wifi, { size: 12, className: "text-green-400" }),
+              "Connected"
+            ] })
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-app-border bg-app-panel p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Cpu, { size: 16, className: "text-app-accent" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-sm font-semibold text-app-text", children: [
+              "Runners (",
+              data.runners.length,
+              ")"
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-1.5", children: data.runners.map((r2) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between rounded-lg border border-app-border/60 bg-app-bg px-3 py-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-app-text font-medium", children: r2.name }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+              r2.path && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-app-muted font-mono", children: r2.path }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${r2.available ? "bg-green-900/30 text-green-400" : "bg-red-900/30 text-red-400"}`, children: r2.available ? "AVAIL" : r2.registered ? "NO CLI" : "N/A" })
+            ] })
+          ] }, r2.name)) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-app-border bg-app-panel p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Activity, { size: 16, className: "text-app-accent" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-app-text", children: "Database" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-4 gap-3", children: [
+            { label: "Projects", value: data.db.projects },
+            { label: "Agents", value: data.db.agents },
+            { label: "Running Sessions", value: data.db.running_sessions },
+            { label: "Running Tasks", value: data.db.running_tasks }
+          ].map((stat) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-lg border border-app-border/60 bg-app-bg p-3 text-center", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xl font-bold text-app-text font-mono", children: stat.value }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] text-app-muted mt-1 uppercase tracking-wide", children: stat.label })
+          ] }, stat.label)) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-app-border bg-app-panel p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Clock, { size: 16, className: "text-app-accent" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-sm font-semibold text-app-text", children: [
+              "Running Sessions (",
+              data.running_sessions.length,
+              ")"
+            ] })
+          ] }),
+          data.running_sessions.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-app-muted", children: "No running sessions" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-1.5", children: data.running_sessions.map((s) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-lg border border-app-border/60 bg-app-bg px-3 py-2 text-xs", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-app-text font-medium", children: s.title || s.id.slice(0, 8) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "rounded bg-green-900/30 px-1.5 py-0.5 text-green-400 font-bold uppercase", children: "Running" })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-1 text-app-muted", children: [
+              "Runner: ",
+              s.runner,
+              " / Agent: ",
+              s.agent_id?.slice(0, 8) || "-"
+            ] })
+          ] }, s.id)) })
+        ] })
+      ] })
+    ] })
+  ] });
+}
+function SchedulesPanel() {
+  const setView = useAppStore((s) => s.setView);
+  const [schedules, setSchedules] = reactExports.useState([]);
+  const [loading, setLoading] = reactExports.useState(true);
+  const [error, setError] = reactExports.useState(null);
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchSchedules();
+      setSchedules(data);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+  reactExports.useEffect(() => {
+    load();
+  }, []);
+  async function toggle(s) {
+    try {
+      if (s.enabled) {
+        await pauseSchedule(s.name);
+      } else {
+        await resumeSchedule(s.name);
+      }
+      await load();
+    } catch (e) {
+      setError(String(e));
+    }
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "flex min-w-0 flex-1 flex-col bg-app-bg", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-12 items-center justify-between border-b border-app-border px-5", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-sm font-semibold text-app-text", children: "Schedules" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "rounded-lg p-2 text-app-muted hover:bg-app-hover hover:text-app-text",
+            onClick: load,
+            title: "Refresh",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { size: 15, className: loading ? "animate-spin" : "" })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "rounded-lg border border-app-border px-3 py-1.5 text-sm text-app-secondary hover:bg-app-hover hover:text-app-text",
+            onClick: () => setView("workspace"),
+            children: "Back to Workspace"
+          }
+        )
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "overflow-y-auto p-5 space-y-3", children: [
+      loading && !schedules.length && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm text-app-muted", children: "Loading schedules..." }),
+      error && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-red-800 bg-red-900/20 p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm text-red-400", children: error }) }),
+      !loading && schedules.length === 0 && !error && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-app-border bg-app-panel p-6 text-center", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Clock, { size: 32, className: "mx-auto mb-3 text-app-muted" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-app-text mb-1", children: "No Schedules" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-xs text-app-muted", children: [
+          "Create a schedule via the chat command ",
+          /* @__PURE__ */ jsxRuntimeExports.jsx("code", { className: "rounded bg-app-badge px-1 py-0.5 text-app-accent", children: "/schedule" })
+        ] })
+      ] }),
+      schedules.map((s) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "div",
+        {
+          className: `rounded-xl border bg-app-panel p-4 transition-colors ${s.enabled ? "border-app-border" : "border-app-border/40 opacity-70"}`,
+          children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start justify-between gap-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-1", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-semibold text-app-text", children: s.name }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${s.enabled ? "bg-green-900/30 text-green-400" : "bg-red-900/30 text-red-400"}`, children: s.enabled ? "Active" : "Paused" })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-app-muted mb-2 font-mono", children: s.cron }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm text-app-secondary line-clamp-2", children: s.prompt }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-2 text-xs text-app-muted", children: [
+                "Agent: ",
+                s.agent_id.slice(0, 8),
+                " / Project: ",
+                s.project_id.slice(0, 8),
+                " / Created: ",
+                s.created_at.slice(0, 10)
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                className: `rounded-lg p-2 transition-colors ${s.enabled ? "text-amber-400 hover:bg-amber-900/20" : "text-green-400 hover:bg-green-900/20"}`,
+                onClick: () => toggle(s),
+                title: s.enabled ? "Pause" : "Resume",
+                children: s.enabled ? /* @__PURE__ */ jsxRuntimeExports.jsx(Pause, { size: 16 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Play, { size: 16 })
+              }
+            )
+          ] })
+        },
+        s.id
+      ))
+    ] })
+  ] });
+}
+function ConnectorsPanel() {
+  const setView = useAppStore((s) => s.setView);
+  const [connectors] = reactExports.useState(mockConnectors);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "flex min-w-0 flex-1 flex-col bg-app-bg", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-12 items-center justify-between border-b border-app-border px-5", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-sm font-semibold text-app-text", children: "Connectors" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center gap-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          className: "rounded-lg border border-app-border px-3 py-1.5 text-sm text-app-secondary hover:bg-app-hover hover:text-app-text",
+          onClick: () => setView("workspace"),
+          children: "Back to Workspace"
+        }
+      ) })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "overflow-y-auto p-5 space-y-3", children: [
+      connectors.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-app-border bg-app-panel p-6 text-center", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Plug, { size: 32, className: "mx-auto mb-3 text-app-muted" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-app-text mb-1", children: "No Connectors" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-app-muted", children: "Connectors allow agents to interact with external services." })
+      ] }),
+      connectors.map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "div",
+        {
+          className: "rounded-xl border border-app-border bg-app-panel p-4",
+          children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `flex h-10 w-10 items-center justify-center rounded-xl ${c.status === "connected" ? "bg-green-900/30" : "bg-red-900/30"}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plug, { size: 18, className: c.status === "connected" ? "text-green-400" : "text-red-400" }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-0.5", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-semibold text-app-text", children: c.type.toUpperCase() }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${c.status === "connected" ? "bg-green-900/30 text-green-400" : "bg-red-900/30 text-red-400"}`, children: c.status })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm text-app-secondary", children: c.label }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-app-muted font-mono mt-0.5", children: c.account })
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex gap-2", children: c.type === "github" && /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "a",
+              {
+                href: `https://github.com/${c.account}`,
+                target: "_blank",
+                rel: "noreferrer",
+                className: "rounded-lg p-2 text-app-muted hover:bg-app-hover hover:text-app-text",
+                title: "Open on GitHub",
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(ExternalLink, { size: 15 })
+              }
+            ) })
+          ] })
+        },
+        c.id
+      )),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-app-border/60 bg-app-panel/50 p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-xs text-app-muted leading-relaxed", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { className: "text-app-secondary", children: "Connectors" }),
+        " are configured per-agent and give models access to external tools (GitHub repositories, Gmail inbox, custom services). Connector setup and per-agent configuration is available through the agent settings dialog. OAuth flows are handled through the browser when adding a new connector."
+      ] }) })
+    ] })
+  ] });
+}
+function GitWorkspacePanel() {
+  const setView = useAppStore((s) => s.setView);
+  const [data, setData] = reactExports.useState(null);
+  const [loading, setLoading] = reactExports.useState(true);
+  const [error, setError] = reactExports.useState(null);
+  const [selectedFile, setSelectedFile] = reactExports.useState(null);
+  const [diffContent, setDiffContent] = reactExports.useState(null);
+  const [diffLoading, setDiffLoading] = reactExports.useState(false);
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      const gitData = await fetchGitStatus();
+      setData(gitData);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+  async function handleFileClick(file) {
+    if (!data?.repo_root) return;
+    setSelectedFile(file);
+    setDiffLoading(true);
+    setDiffContent(null);
+    try {
+      const diff = await fetchGitDiff(data.repo_root, file);
+      setDiffContent(diff);
+    } catch (e) {
+      setDiffContent(`Error loading diff: ${e}`);
+    } finally {
+      setDiffLoading(false);
+    }
+  }
+  function closeDiff() {
+    setSelectedFile(null);
+    setDiffContent(null);
+  }
+  function renderDiff(diff) {
+    const lines = diff.split("\n");
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "font-mono text-xs leading-relaxed overflow-x-auto", children: lines.map((line, i) => {
+      let cls = "px-2 py-0";
+      if (line.startsWith("+") && !line.startsWith("+++")) {
+        cls += " bg-green-900/30 text-green-300";
+      } else if (line.startsWith("-") && !line.startsWith("---")) {
+        cls += " bg-red-900/30 text-red-300";
+      } else if (line.startsWith("@@")) {
+        cls += " bg-cyan-900/20 text-cyan-300";
+      } else if (line.startsWith("diff ") || line.startsWith("index ") || line.startsWith("---") || line.startsWith("+++")) {
+        cls += " text-app-muted";
+      }
+      return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: cls, children: line || " " }, i);
+    }) });
+  }
+  reactExports.useEffect(() => {
+    load();
+  }, []);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("main", { className: "flex min-w-0 flex-1 flex-col bg-app-bg", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-12 items-center justify-between border-b border-app-border px-5", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(GitBranch, { size: 16, className: "text-app-accent" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-sm font-semibold text-app-text", children: "Git Workspace" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "rounded bg-app-badge px-1.5 py-0.5 text-[10px] font-bold uppercase text-app-muted", children: "Read-only" })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "rounded-lg p-2 text-app-muted hover:bg-app-hover hover:text-app-text",
+            onClick: load,
+            title: "Refresh",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { size: 15, className: loading ? "animate-spin" : "" })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "rounded-lg border border-app-border px-3 py-1.5 text-sm text-app-secondary hover:bg-app-hover hover:text-app-text",
+            onClick: () => setView("workspace"),
+            children: "Back to Workspace"
+          }
+        )
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "overflow-y-auto p-5 space-y-4", children: [
+      loading && !data && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-sm text-app-muted flex items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { size: 14, className: "animate-spin" }),
+        "Loading git workspace status..."
+      ] }),
+      error && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-red-800 bg-red-900/20 p-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-red-400", children: "Error loading git status" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-1 text-sm text-red-300", children: error }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            className: "mt-3 rounded-lg border border-red-700 px-3 py-1.5 text-sm text-red-300 hover:bg-red-900/40",
+            onClick: load,
+            children: "Retry"
+          }
+        )
+      ] }),
+      data && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        data.error && !data.in_repo && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-amber-800 bg-amber-900/20 p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(FileWarning, { size: 16, className: "text-amber-400" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-amber-300", children: data.error })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2 text-xs text-amber-400/70", children: "Open a project to see git workspace information." })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "rounded-xl border border-app-border bg-app-panel p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(FolderOpen, { size: 16, className: "text-app-accent" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-sm font-semibold text-app-text", children: "Project Path" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-lg bg-app-bg px-3 py-2 font-mono text-sm text-app-text break-all", children: data.path }),
+          data.repo_root && data.repo_root !== data.path && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-2 text-xs text-app-muted", children: [
+            "Repo root: ",
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-mono text-app-secondary", children: data.repo_root })
+          ] })
+        ] }),
+        data.in_repo && /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "rounded-xl border border-app-border bg-app-panel p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-sm font-semibold text-app-text mb-3", children: "Status" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-lg border border-app-border/60 bg-app-bg p-3", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-1", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(GitBranch, { size: 14, className: "text-app-accent" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-app-muted", children: "Current Branch" })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "font-mono text-sm text-app-text", children: data.branch })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `rounded-lg border bg-app-bg p-3 ${data.dirty_count > 0 ? "border-amber-700/50" : "border-app-border/60"}`, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-1", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(FileWarning, { size: 14, className: data.dirty_count > 0 ? "text-amber-400" : "text-green-400" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-app-muted", children: "Dirty Files" })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `font-mono text-sm font-bold ${data.dirty_count > 0 ? "text-amber-400" : "text-green-400"}`, children: data.dirty_count === 0 ? "Clean" : `${data.dirty_count} file${data.dirty_count > 1 ? "s" : ""}` })
+            ] })
+          ] }),
+          data.dirty_files.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 rounded-lg border border-amber-800/40 bg-amber-900/10 p-3 max-h-48 overflow-y-auto", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-amber-400/80 font-semibold mb-2", children: "Modified Files" }),
+            data.dirty_files.map((f2, i) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                onClick: () => handleFileClick(f2),
+                className: `w-full text-left font-mono text-xs py-0.5 truncate rounded px-1 -mx-1 transition-colors ${selectedFile === f2 ? "bg-app-accent/20 text-app-accent" : "text-app-secondary hover:bg-app-hover hover:text-app-text"}`,
+                children: f2
+              },
+              i
+            ))
+          ] }),
+          selectedFile && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 rounded-lg border border-app-border bg-black/20 p-3 max-h-80 overflow-auto", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between mb-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-xs text-app-accent font-semibold font-mono", children: [
+                "Diff: ",
+                selectedFile
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  onClick: closeDiff,
+                  className: "text-xs text-app-muted hover:text-app-text px-1",
+                  title: "Close diff",
+                  children: "x"
+                }
+              )
+            ] }),
+            diffLoading ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-xs text-app-muted flex items-center gap-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { size: 12, className: "animate-spin" }),
+              "Loading diff..."
+            ] }) : diffContent !== null ? diffContent.startsWith("Error") ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-red-400", children: diffContent }) : diffContent === "" ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-app-muted", children: "No changes (clean file)." }) : renderDiff(diffContent) : null
+          ] })
+        ] }),
+        data.in_repo && data.recent_commits.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "rounded-xl border border-app-border bg-app-panel p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(GitCommitHorizontal, { size: 16, className: "text-app-accent" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-sm font-semibold text-app-text", children: "Recent Commits" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-1", children: data.recent_commits.map((c, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              className: `flex items-center gap-2 rounded-lg px-3 py-2 font-mono text-xs ${i === 0 ? "bg-app-accent/10 text-app-text" : "text-app-secondary"}`,
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `h-1.5 w-1.5 rounded-full shrink-0 ${i === 0 ? "bg-app-accent" : "bg-app-border"}` }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate", children: c.raw })
+              ]
+            },
+            i
+          )) })
+        ] }),
+        data.in_repo && data.recent_commits.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { className: "rounded-xl border border-app-border bg-app-panel p-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(GitCommitHorizontal, { size: 16, className: "text-app-muted" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-sm font-semibold text-app-text", children: "Recent Commits" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-app-muted", children: "No commits yet in this repository." })
+        ] })
+      ] })
+    ] })
   ] });
 }
 function AppShell() {
@@ -8123,18 +8991,13 @@ function AppShell() {
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-[calc(100vh-44px)]", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Sidebar, {}),
       view === "workspace" && /* @__PURE__ */ jsxRuntimeExports.jsx(MainWorkspace, {}),
+      view === "settings" && /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsPanel, {}),
       view === "diagnostics" && /* @__PURE__ */ jsxRuntimeExports.jsx(DiagnosticsPanel, {}),
-      view === "settings" && /* @__PURE__ */ jsxRuntimeExports.jsx(DiagnosticsPanel, {}),
-      view === "schedules" && /* @__PURE__ */ jsxRuntimeExports.jsx(Placeholder, { title: "Schedules" }),
-      view === "connectors" && /* @__PURE__ */ jsxRuntimeExports.jsx(Placeholder, { title: "Connectors" })
+      view === "schedules" && /* @__PURE__ */ jsxRuntimeExports.jsx(SchedulesPanel, {}),
+      view === "connectors" && /* @__PURE__ */ jsxRuntimeExports.jsx(ConnectorsPanel, {}),
+      view === "git" && /* @__PURE__ */ jsxRuntimeExports.jsx(GitWorkspacePanel, {})
     ] })
   ] });
-}
-function Placeholder({ title }) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("main", { className: "flex flex-1 items-center justify-center bg-app-bg", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-app-border bg-app-panel px-6 py-5 text-app-muted", children: [
-    title,
-    " coming soon"
-  ] }) });
 }
 function App() {
   const loadAgents = useAgentStore((s) => s.loadAgents);

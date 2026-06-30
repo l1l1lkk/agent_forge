@@ -5,9 +5,24 @@ function api(): { get(path: string): Promise<any>; post(path: string, body?: any
   if (window.forgeDesktop?.api) return window.forgeDesktop.api
   // Fallback for browser dev
   return {
-    get: async (path: string) => fetch(`http://127.0.0.1:8765${path}`).then(r => r.json()),
-    post: async (path: string, body?: any) => fetch(`http://127.0.0.1:8765${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(r => r.json()),
+    get: async (path: string) => parseResponse(await fetch(`http://127.0.0.1:8765${path}`), path),
+    post: async (path: string, body?: any) => parseResponse(await fetch(`http://127.0.0.1:8765${path}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }), path),
   }
+}
+
+async function parseResponse(response: Response, path: string): Promise<any> {
+  const text = await response.text()
+  let payload: any = text
+  try {
+    payload = text ? JSON.parse(text) : null
+  } catch {
+    // Keep plain text payload.
+  }
+  if (!response.ok) {
+    const detail = typeof payload === 'object' && payload?.detail ? JSON.stringify(payload.detail) : text
+    throw new Error(`${response.status} ${response.statusText} for ${path}${detail ? `: ${detail}` : ''}`)
+  }
+  return payload
 }
 
 export async function fetchAgents(): Promise<Agent[]> {
@@ -53,6 +68,42 @@ export async function fetchRunners(): Promise<any[]> {
     label: r.name, authType: r.name === 'claude' || r.name === 'codex' ? 'oauth' : 'none',
     status: r.available ? 'ready' : 'missing',
   }))
+}
+
+export async function fetchDiagnostics(): Promise<any> {
+  return api().get('/api/desktop/diagnostics')
+}
+
+export async function fetchGitStatus(projectPath?: string): Promise<any> {
+  const params = projectPath ? `?path=${encodeURIComponent(projectPath)}` : ''
+  return api().get(`/api/desktop/git-status${params}`)
+}
+
+export async function fetchGitDiff(repoRoot: string, file: string): Promise<string> {
+  const params = `?path=${encodeURIComponent(repoRoot)}&file=${encodeURIComponent(file)}`
+  return api().get(`/api/desktop/git-diff${params}`)
+}
+
+export async function fetchSchedules(): Promise<any[]> {
+  const data = await api().get('/api/schedules')
+  return data.schedules || []
+}
+
+export async function pauseSchedule(name: string): Promise<any> {
+  return api().post(`/api/schedules/${name}/pause`)
+}
+
+export async function resumeSchedule(name: string): Promise<any> {
+  return api().post(`/api/schedules/${name}/resume`)
+}
+
+export async function interruptSession(sessionId: string): Promise<any> {
+  return api().post(`/api/sessions/${sessionId}/interrupt`)
+}
+
+export async function fetchConnectors(): Promise<any[]> {
+  const data = await api().get('/api/connectors')
+  return data.connectors || []
 }
 
 function _avatar(name: string): string {

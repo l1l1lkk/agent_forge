@@ -1,7 +1,7 @@
 import { useAppStore } from '../../stores/appStore'
 import { useAgentStore } from '../../stores/agentStore'
 import { useSessionStore } from '../../stores/sessionStore'
-import { Settings } from 'lucide-react'
+import { Settings, Activity, GitBranch } from 'lucide-react'
 
 export function TopBar() {
   const connectionStatus = useAppStore((s) => s.connectionStatus)
@@ -35,7 +35,13 @@ export function TopBar() {
         <span className={`h-2 w-2 rounded-full ${statusClass}`} />
         <span>{daemonLabel}</span>
         <span>Connected</span>
-        <button onClick={() => setView('diagnostics')} className="ml-1 rounded-lg p-1.5 text-app-muted hover:bg-app-hover hover:text-app-text">
+        <button onClick={() => setView('git')} className="ml-1 rounded-lg p-1.5 text-app-muted hover:bg-app-hover hover:text-app-text" title="Git Workspace">
+          <GitBranch size={14} />
+        </button>
+        <button onClick={() => setView('diagnostics')} className="rounded-lg p-1.5 text-app-muted hover:bg-app-hover hover:text-app-text" title="Diagnostics">
+          <Activity size={14} />
+        </button>
+        <button onClick={() => setView('settings')} className="rounded-lg p-1.5 text-app-muted hover:bg-app-hover hover:text-app-text" title="Settings">
           <Settings size={14} />
         </button>
       </div>
